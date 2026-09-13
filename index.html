@@ -132,7 +132,7 @@
           <div>
             <div class="flex items-center space-x-2">
               <span class="font-black text-lg tracking-wider text-white">PORTAL SPENSA</span>
-              <span class="bg-blue-800/80 text-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-700">v4.1.0</span>
+              <span class="bg-blue-800/80 text-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-700">v4.1.1</span>
             </div>
             <p class="text-xs text-blue-200/80 font-medium">SMP Negeri 1 Padang Panjang</p>
           </div>
@@ -1026,7 +1026,7 @@
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
         <h3 class="font-black text-slate-800 text-lg flex items-center space-x-2">
           <i class="fa-solid fa-code text-blue-600"></i>
-          <span>Kode Google Apps Script Spensa v4.1.0</span>
+          <span>Kode Google Apps Script Spensa v4.1.1</span>
         </h3>
         <button onclick="closeGASCodeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
       </div>
@@ -1445,10 +1445,104 @@
       e.preventDefault();
       const code = document.getElementById('manualInputID').value.trim();
       const statusOverride = document.getElementById('manualInputStatus').value;
-      if (code) {
-        processScannedCode(code, 'Input Manual', statusOverride);
-        document.getElementById('manualInputID').value = '';
+      if (!code) return;
+
+      if (statusOverride && statusOverride !== 'AUTO') {
+        saveManualAttendanceToGoogleSheets(code, statusOverride, 'Input Manual');
+      } else {
+        processScannedCode(code, 'Input Manual', 'AUTO');
       }
+
+      document.getElementById('manualInputID').value = '';
+    }
+
+    function saveManualAttendanceToGoogleSheets(scannedValue, statusOverride, modeText = 'Input Manual') {
+      const value = String(scannedValue || '').trim();
+      const status = String(statusOverride || '').trim();
+      const url = document.getElementById('gasScriptUrl')?.value.trim() || loadGASUrl();
+
+      if (!value) return;
+      if (!url) {
+        showToast('URL Google Apps Script belum diatur.', 'error');
+        return;
+      }
+
+      const localStudent = studentData.find(s =>
+        String(s.rfid || '').trim() === value ||
+        String(s.nis || '').trim() === value ||
+        String(s.id || '').trim() === value ||
+        String(s.name || '').trim().toLowerCase() === value.toLowerCase()
+      );
+
+      if (localStudent) {
+        showScanResult(localStudent, true, 'Menyimpan status ' + status + '...', modeText, status, false);
+      }
+
+      const callbackName = 'spensaManual_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+      const script = document.createElement('script');
+      let finished = false;
+
+      const cleanup = () => {
+        if (script.parentNode) script.parentNode.removeChild(script);
+        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+      };
+
+      const timeout = setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        playAudioBeep('error');
+        showToast('Waktu habis saat menyimpan status manual.', 'error');
+      }, 10000);
+
+      window[callbackName] = function(response) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+        cleanup();
+
+        if (!response || response.status !== 'success') {
+          playAudioBeep('error');
+          showToast(response?.message || 'Status manual gagal disimpan.', 'error');
+          return;
+        }
+
+        const savedStudent = response.student || localStudent;
+        if (savedStudent) {
+          showScanResult(
+            savedStudent, true,
+            response.message || ('Status ' + status + ' berhasil dicatat.'),
+            modeText,
+            response.attendance?.status || status,
+            false
+          );
+        }
+
+        if (String(status).toLowerCase() === 'terlambat') playAudioBeep('late');
+        else playAudioBeep('success');
+
+        showToast(response.message || 'Status manual berhasil disimpan.', 'success');
+        setTimeout(() => loadAttendanceFromGoogleSheets(false), 300);
+      };
+
+      const separator = url.includes('?') ? '&' : '?';
+      script.src = url + separator +
+        'action=manualAttendance' +
+        '&value=' + encodeURIComponent(value) +
+        '&status=' + encodeURIComponent(status) +
+        '&_ts=' + Date.now() +
+        '&callback=' + encodeURIComponent(callbackName);
+
+      script.onerror = function() {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+        cleanup();
+        playAudioBeep('error');
+        showToast('Gagal menghubungi Google Apps Script.', 'error');
+      };
+
+      document.body.appendChild(script);
     }
 
     function processScannedCode(scannedValue, modeText, statusOverride = 'AUTO') {
@@ -1637,6 +1731,11 @@
             log.lateMinutes = m ? Number(m[1]) : (log.lateMinutes || 0);
           } else if (type === 'PULANG') {
             log.timeOut = row.time || log.timeOut;
+          } else if (type === 'STATUS') {
+            log.timeIn = '-';
+            log.timeOut = '-';
+            log.status = row.status || log.status;
+            log.lateMinutes = 0;
           }
           log.mode = row.mode || log.mode;
         });
