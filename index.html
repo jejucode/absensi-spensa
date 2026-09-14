@@ -1445,104 +1445,10 @@
       e.preventDefault();
       const code = document.getElementById('manualInputID').value.trim();
       const statusOverride = document.getElementById('manualInputStatus').value;
-      if (!code) return;
-
-      if (statusOverride && statusOverride !== 'AUTO') {
-        saveManualAttendanceToGoogleSheets(code, statusOverride, 'Input Manual');
-      } else {
-        processScannedCode(code, 'Input Manual', 'AUTO');
+      if (code) {
+        processScannedCode(code, 'Input Manual', statusOverride);
+        document.getElementById('manualInputID').value = '';
       }
-
-      document.getElementById('manualInputID').value = '';
-    }
-
-    function saveManualAttendanceToGoogleSheets(scannedValue, statusOverride, modeText = 'Input Manual') {
-      const value = String(scannedValue || '').trim();
-      const status = String(statusOverride || '').trim();
-      const url = document.getElementById('gasScriptUrl')?.value.trim() || loadGASUrl();
-
-      if (!value) return;
-      if (!url) {
-        showToast('URL Google Apps Script belum diatur.', 'error');
-        return;
-      }
-
-      const localStudent = studentData.find(s =>
-        String(s.rfid || '').trim() === value ||
-        String(s.nis || '').trim() === value ||
-        String(s.id || '').trim() === value ||
-        String(s.name || '').trim().toLowerCase() === value.toLowerCase()
-      );
-
-      if (localStudent) {
-        showScanResult(localStudent, true, 'Menyimpan status ' + status + '...', modeText, status, false);
-      }
-
-      const callbackName = 'spensaManual_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-      const script = document.createElement('script');
-      let finished = false;
-
-      const cleanup = () => {
-        if (script.parentNode) script.parentNode.removeChild(script);
-        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
-      };
-
-      const timeout = setTimeout(() => {
-        if (finished) return;
-        finished = true;
-        cleanup();
-        playAudioBeep('error');
-        showToast('Waktu habis saat menyimpan status manual.', 'error');
-      }, 10000);
-
-      window[callbackName] = function(response) {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timeout);
-        cleanup();
-
-        if (!response || response.status !== 'success') {
-          playAudioBeep('error');
-          showToast(response?.message || 'Status manual gagal disimpan.', 'error');
-          return;
-        }
-
-        const savedStudent = response.student || localStudent;
-        if (savedStudent) {
-          showScanResult(
-            savedStudent, true,
-            response.message || ('Status ' + status + ' berhasil dicatat.'),
-            modeText,
-            response.attendance?.status || status,
-            false
-          );
-        }
-
-        if (String(status).toLowerCase() === 'terlambat') playAudioBeep('late');
-        else playAudioBeep('success');
-
-        showToast(response.message || 'Status manual berhasil disimpan.', 'success');
-        setTimeout(() => loadAttendanceFromGoogleSheets(false), 300);
-      };
-
-      const separator = url.includes('?') ? '&' : '?';
-      script.src = url + separator +
-        'action=manualAttendance' +
-        '&value=' + encodeURIComponent(value) +
-        '&status=' + encodeURIComponent(status) +
-        '&_ts=' + Date.now() +
-        '&callback=' + encodeURIComponent(callbackName);
-
-      script.onerror = function() {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timeout);
-        cleanup();
-        playAudioBeep('error');
-        showToast('Gagal menghubungi Google Apps Script.', 'error');
-      };
-
-      document.body.appendChild(script);
     }
 
     function processScannedCode(scannedValue, modeText, statusOverride = 'AUTO') {
@@ -1654,11 +1560,15 @@
     }
 
     // ============================================================
-    // ABSENSI ONLINE - GOOGLE SHEETS SEBAGAI SUMBER UTAMA
+    // ABSENSI ONLINE - SYNC ENGINE v2
+    // Google Sheet = sumber data utama untuk semua komputer.
     // ============================================================
     let attendanceSyncSeq = 0;
     let attendancePollTimer = null;
     let attendanceServerLastSuccess = 0;
+    let attendanceSyncInFlight = false;
+    let attendanceSyncPending = false;
+    let attendanceSyncRetryTimer = null;
 
     function localDateYMD(date = new Date()) {
       const y = date.getFullYear();
@@ -1667,39 +1577,74 @@
       return `${y}-${m}-${d}`;
     }
 
-    function loadAttendanceFromGoogleSheets(showMessage = false) {
+    function loadAttendanceFromGoogleSheets(showMessage = false, retryCount = 0) {
       const url = loadGASUrl();
       if (!url) return;
+
+      // Jangan membuat beberapa request getAttendance sekaligus.
+      // Ini penting pada jaringan berbeda yang memiliki latency lebih tinggi.
+      if (attendanceSyncInFlight) {
+        attendanceSyncPending = true;
+        return;
+      }
+
+      attendanceSyncInFlight = true;
+      attendanceSyncPending = false;
 
       const dateInput = document.getElementById('logFilterDate');
       const date = dateInput?.value || localDateYMD();
       const seq = ++attendanceSyncSeq;
-      const callbackName = 'spensaAttendance_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+      const callbackName = 'spensaAttendance_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
       const script = document.createElement('script');
       let finished = false;
-      const cleanup = () => {
+
+      const finish = () => {
+        if (finished) return false;
+        finished = true;
+        clearTimeout(timeout);
         if (script.parentNode) script.parentNode.removeChild(script);
         try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+        attendanceSyncInFlight = false;
+        return true;
       };
+
+      const scheduleRetry = () => {
+        if (attendanceSyncRetryTimer) clearTimeout(attendanceSyncRetryTimer);
+        if (retryCount >= 3) return;
+        const delay = 1500 * Math.pow(2, retryCount);
+        attendanceSyncRetryTimer = setTimeout(() => {
+          attendanceSyncRetryTimer = null;
+          loadAttendanceFromGoogleSheets(false, retryCount + 1);
+        }, delay);
+      };
+
+      // Beri jaringan berbeda waktu lebih panjang sebelum dianggap gagal.
       const timeout = setTimeout(() => {
-        if (finished) return;
-        finished = true;
-        cleanup();
-        if (showMessage) console.warn('Data absensi Google Sheet belum dapat dimuat. attendanceLogs tetap kosong/server-only.');
-      }, 10000);
+        if (!finish()) return;
+        if (showMessage) console.warn('Sinkronisasi absensi timeout. Retry otomatis dijadwalkan.');
+        scheduleRetry();
+        if (attendanceSyncPending) {
+          attendanceSyncPending = false;
+          setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
+        }
+      }, 20000);
 
       window[callbackName] = function(response) {
         if (finished) return;
-        finished = true;
-        clearTimeout(timeout);
-        cleanup();
-        if (seq !== attendanceSyncSeq) return;
+        if (!finish()) return;
+
         if (!response || response.status !== 'success' || !Array.isArray(response.data)) {
           if (showMessage) showToast(response?.message || 'Gagal membaca data absensi.', 'error');
+          scheduleRetry();
+          if (attendanceSyncPending) {
+            attendanceSyncPending = false;
+            setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
+          }
           return;
         }
 
-        // Bentuk ulang log lokal dari data server untuk tanggal yang sedang ditampilkan.
+        // Response yang berhasil selalu diterapkan ke tampilan.
+        // Tidak ada response lama yang dibuang hanya karena request berikutnya dibuat.
         const grouped = new Map();
         response.data.forEach(row => {
           const nis = String(row.nis || '').trim();
@@ -1716,14 +1661,27 @@
             photo: '',
             role: 'Siswa'
           };
-          const key = nis || String(student.id || row.name || '');
+
+          // NIS menjadi prioritas; jika NIS kosong, gunakan ID peserta lalu nama.
+          const key = nis || String(student.id || '').trim() || rowName.toLowerCase();
           if (!key) return;
+
           const type = String(row.type || row.tipe || '').toUpperCase();
           let log = grouped.get(key);
           if (!log) {
-            log = { id: 'server_' + key + '_' + date, studentId: student.id, date: row.date || date, timeIn: '-', timeOut: '-', status: row.status || 'Hadir', lateMinutes: 0, mode: row.mode || 'RFID' };
+            log = {
+              id: 'server_' + key + '_' + date,
+              studentId: student.id,
+              date: row.date || date,
+              timeIn: '-',
+              timeOut: '-',
+              status: row.status || 'Hadir',
+              lateMinutes: 0,
+              mode: row.mode || 'RFID'
+            };
             grouped.set(key, log);
           }
+
           if (type === 'MASUK') {
             log.timeIn = row.time || log.timeIn;
             log.status = row.status || log.status;
@@ -1740,40 +1698,68 @@
           log.mode = row.mode || log.mode;
         });
 
-        attendanceLogs = Array.from(grouped.values()).sort((a,b) => {
-          const ta = String(b.timeIn || '');
-          const tb = String(a.timeIn || '');
-          return ta.localeCompare(tb);
+        attendanceLogs = Array.from(grouped.values()).sort((a, b) => {
+          return String(b.timeIn || '').localeCompare(String(a.timeIn || ''));
         });
         attendanceServerLastSuccess = Date.now();
-        // Jangan gunakan saveLocalStorage di sini untuk log: server harus tetap menjadi sumber utama.
+
+        // Google Sheet tetap menjadi sumber utama; jangan menulis log ke localStorage.
         renderDashboard();
         renderAttendanceLogTable();
         if (showMessage) showToast(`Absensi ${response.data.length} transaksi dimuat dari Google Sheet.`, 'success');
+
+        // Jika ada refresh yang diminta saat request tadi masih berjalan, lakukan satu refresh lagi.
+        if (attendanceSyncPending) {
+          attendanceSyncPending = false;
+          setTimeout(() => loadAttendanceFromGoogleSheets(false), 150);
+        }
       };
 
       const separator = url.includes('?') ? '&' : '?';
-      script.src = url + separator + 'action=getAttendance&date=' + encodeURIComponent(date) + '&_ts=' + Date.now() + '&callback=' + encodeURIComponent(callbackName);
+      script.src = url + separator +
+        'action=getAttendance' +
+        '&date=' + encodeURIComponent(date) +
+        '&_ts=' + Date.now() +
+        '&callback=' + encodeURIComponent(callbackName);
+
       script.onerror = function() {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timeout);
-        cleanup();
-        if (showMessage) showToast('Koneksi Google Apps Script gagal.', 'error');
+        if (!finish()) return;
+        if (showMessage) showToast('Koneksi Google Apps Script gagal. Mencoba ulang...', 'error');
+        scheduleRetry();
+        if (attendanceSyncPending) {
+          attendanceSyncPending = false;
+          setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
+        }
       };
+
       document.head.appendChild(script);
     }
 
     function startAttendancePolling() {
       if (attendancePollTimer) clearInterval(attendancePollTimer);
-      // First refresh shortly after the participant list is available,
-      // then keep every client synchronized with the central Sheet.
-      setTimeout(() => loadAttendanceFromGoogleSheets(false), 800);
+      if (attendanceSyncRetryTimer) clearTimeout(attendanceSyncRetryTimer);
+
+      // Sinkronisasi awal.
+      setTimeout(() => loadAttendanceFromGoogleSheets(false), 500);
+
+      // Sinkronisasi berkala. Request tidak akan bertumpuk.
       attendancePollTimer = setInterval(() => {
         if (document.visibilityState === 'visible') {
           loadAttendanceFromGoogleSheets(false);
         }
       }, 5000);
+
+      // Saat tab kembali aktif, langsung minta data terbaru.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          setTimeout(() => loadAttendanceFromGoogleSheets(false), 150);
+        }
+      });
+
+      // Recovery saat koneksi/jaringan kembali tersedia.
+      window.addEventListener('online', () => {
+        setTimeout(() => loadAttendanceFromGoogleSheets(false), 300);
+      });
     }
 
     function showScanResult(student, success, message, modeText, status = 'Hadir', isCheckOut = false) {
