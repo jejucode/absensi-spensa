@@ -2317,10 +2317,17 @@ function formatAttendanceDate(value) {
       );
     }) || {};
 
-    const studentName = String(student.name || log.name || 'Peserta').trim();
-    const studentClass = String(student.class || log.class || '-').trim();
-    const studentNis = String(student.nis || log.nis || logStudentId || '-').trim();
-    const logStatus = String(log.status || '').trim();
+    const studentName =
+      String(student.name || log.name || 'Peserta').trim();
+
+    const studentClass =
+      String(student.class || log.class || '-').trim();
+
+    const studentNis =
+      String(student.nis || log.nis || logStudentId || '-').trim();
+
+    const logStatus =
+      String(log.status || '').trim();
 
     const matchDate =
       !dateFilter ||
@@ -2354,8 +2361,8 @@ function formatAttendanceDate(value) {
 
   if (!filtered.length) {
     tbody.innerHTML = `
-      
-        <td colspan="6" class="py-8 px-4 text-center text-slate-400">
+      <tr>
+        <td colspan="7" class="py-8 px-4 text-center text-slate-400">
           <div class="flex flex-col items-center gap-2">
             <i class="fa-solid fa-calendar-xmark text-2xl text-slate-300"></i>
             <span class="font-semibold">Belum ada data absensi.</span>
@@ -2365,6 +2372,81 @@ function formatAttendanceDate(value) {
     `;
     return;
   }
+
+  tbody.innerHTML = filtered.map(log => {
+    const logStudentId = String(log.studentId || '').trim();
+
+    const student = studentData.find(s => {
+      const id = String(s.id || '').trim();
+      const nis = String(s.nis || '').trim();
+
+      return (
+        (logStudentId && id === logStudentId) ||
+        (logStudentId && nis === logStudentId)
+      );
+    }) || {};
+
+    const studentName =
+      String(student.name || log.name || 'Peserta').trim();
+
+    const studentClass =
+      String(student.class || log.class || '-').trim();
+
+    const studentNis =
+      String(student.nis || log.nis || logStudentId || '-').trim();
+
+    const status =
+      String(log.status || 'Hadir').trim();
+
+    const statusBadge =
+      status === 'Hadir'
+        ? 'bg-emerald-100 text-emerald-700'
+        : status === 'Terlambat'
+          ? 'bg-amber-100 text-amber-700'
+          : 'bg-rose-100 text-rose-700';
+
+    return `
+      <tr class="hover:bg-slate-50 transition">
+
+        <td class="py-3 px-4 font-bold text-slate-800">
+          ${studentName}
+          <span class="text-[10px] text-slate-400 block font-normal">
+            NISN: ${studentNis}
+          </span>
+        </td>
+
+        <td class="py-3 px-4 font-semibold text-slate-600">
+          ${formatAttendanceDate(log.date)}
+        </td>
+
+        <td class="py-3 px-4 font-semibold text-slate-600">
+          Kelas ${studentClass}
+        </td>
+
+        <td class="py-3 px-4 font-mono font-bold text-emerald-600">
+          ${formatAttendanceTime(log.timeIn)}${log.timeIn && log.timeIn !== '-' ? ' WIB' : ''}
+        </td>
+
+        <td class="py-3 px-4 font-mono font-bold text-blue-600">
+          ${formatAttendanceTime(log.timeOut)}${log.timeOut && log.timeOut !== '-' ? ' WIB' : ''}
+        </td>
+
+        <td class="py-3 px-4">
+          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${statusBadge}">
+            ${status}
+            ${log.lateMinutes > 0 ? `(${log.lateMinutes} mnt)` : ''}
+          </span>
+        </td>
+
+        <td class="py-3 px-4 text-slate-500 text-[11px] font-medium">
+          <i class="fa-solid fa-tag mr-1 text-slate-400"></i>
+          ${log.mode || 'RFID'}
+        </td>
+
+      </tr>
+    `;
+  }).join('');
+}
 
   tbody.innerHTML = filtered.map(log => {
     const logStudentId = String(log.studentId || '').trim();
