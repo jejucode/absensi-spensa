@@ -2248,7 +2248,38 @@
       renderStudentTable();
       showToast('Data siswa berhasil dihapus.', 'info');
     }
+function formatAttendanceTime(value) {
+  if (!value || value === '-') return '-';
 
+  const text = String(value).trim();
+
+  // Jika sudah berupa HH:mm atau HH:mm:ss
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(text)) {
+    return text;
+  }
+
+  // Format dari Google Apps Script, misalnya:
+  // Sat Dec 30 1899 09:00:52 GMT+0700 ...
+  const match = text.match(/\b(\d{1,2}):(\d{2}):(\d{2})\b/);
+
+  if (match) {
+    return `${match[1].padStart(2, '0')}:${match[2]}:${match[3]}`;
+  }
+
+  // Fallback jika format berubah
+  const date = new Date(value);
+
+  if (!isNaN(date.getTime())) {
+    return date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  }
+
+  return text;
+}
    function renderAttendanceLogTable() {
   const dateFilter = document.getElementById('logFilterDate')?.value || '';
   const classFilter = document.getElementById('logFilterClass')?.value || 'ALL';
@@ -2365,12 +2396,12 @@
         </td>
 
         <td class="py-3 px-4 font-mono font-bold text-emerald-600">
-          ${log.timeIn || '-'}${log.timeIn && log.timeIn !== '-' ? ' WIB' : ''}
-        </td>
+  ${formatAttendanceTime(log.timeIn)}${log.timeIn && log.timeIn !== '-' ? ' WIB' : ''}
+</td>
 
-        <td class="py-3 px-4 font-mono font-bold text-blue-600">
-          ${log.timeOut && log.timeOut !== '-' ? log.timeOut + ' WIB' : '-'}
-        </td>
+<td class="py-3 px-4 font-mono font-bold text-blue-600">
+  ${formatAttendanceTime(log.timeOut)}${log.timeOut && log.timeOut !== '-' ? ' WIB' : ''}
+</td>
 
         <td class="py-3 px-4">
           <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${statusBadge}">
