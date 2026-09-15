@@ -119,6 +119,59 @@
 </head>
 <body class="min-h-screen bg-slate-50 flex flex-col antialiased selection:bg-blue-600 selection:text-white">
 
+  <!-- ================= LOGIN GATE ================= -->
+  <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950 p-4">
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-blue-500/20 blur-3xl"></div>
+      <div class="absolute -bottom-24 -left-24 w-72 h-72 rounded-full bg-indigo-500/20 blur-3xl"></div>
+    </div>
+    <div class="relative w-full max-w-md">
+      <div class="bg-white/95 backdrop-blur rounded-3xl shadow-2xl border border-white/20 p-7 sm:p-8">
+        <div class="text-center mb-7">
+          <div class="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-400 to-yellow-300 flex items-center justify-center text-blue-950 text-3xl shadow-lg border border-amber-200">
+            <i class="fa-solid fa-graduation-cap"></i>
+          </div>
+          <h1 class="mt-4 text-2xl font-black tracking-tight text-slate-900">PORTAL SPENSA</h1>
+          <p class="text-sm font-semibold text-blue-700">SMP Negeri 1 Padang Panjang</p>
+          <p class="text-xs text-slate-500 mt-1">Silakan masuk untuk melanjutkan</p>
+        </div>
+
+        <form id="loginForm" onsubmit="handleLoginSubmit(event)" class="space-y-4">
+          <div>
+            <label for="loginUsername" class="block text-xs font-bold text-slate-700 mb-1.5">Username</label>
+            <div class="relative">
+              <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <input id="loginUsername" type="text" autocomplete="username" required class="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-sm font-semibold" placeholder="Masukkan username">
+            </div>
+          </div>
+
+          <div>
+            <label for="loginPassword" class="block text-xs font-bold text-slate-700 mb-1.5">Password</label>
+            <div class="relative">
+              <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <input id="loginPassword" type="password" autocomplete="current-password" required class="w-full pl-11 pr-12 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none text-sm font-semibold" placeholder="Masukkan password">
+              <button type="button" onclick="toggleLoginPassword()" class="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700" aria-label="Tampilkan password">
+                <i id="loginPasswordIcon" class="fa-solid fa-eye"></i>
+              </button>
+            </div>
+          </div>
+
+          <div id="loginError" class="hidden rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-4 py-3 text-xs font-bold"></div>
+
+          <button id="loginButton" type="submit" class="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold shadow-lg shadow-blue-600/20 transition flex items-center justify-center gap-2">
+            <i id="loginButtonIcon" class="fa-solid fa-right-to-bracket"></i>
+            <span id="loginButtonText">Masuk ke Portal</span>
+          </button>
+        </form>
+
+        <div class="mt-6 pt-5 border-t border-slate-100 text-center">
+          <p class="text-[10px] text-slate-400 font-medium">Autentikasi terhubung ke Google Sheets • Session aman</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
   <!-- TOP NAVBAR -->
   <header class="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white sticky top-0 z-40 shadow-lg border-b border-blue-800/50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -132,7 +185,7 @@
           <div>
             <div class="flex items-center space-x-2">
               <span class="font-black text-lg tracking-wider text-white">PORTAL SPENSA</span>
-              <span class="bg-blue-800/80 text-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-700">v4.1.1</span>
+              <span class="bg-blue-800/80 text-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-700">v4.2.0 LOGIN</span>
             </div>
             <p class="text-xs text-blue-200/80 font-medium">SMP Negeri 1 Padang Panjang</p>
           </div>
@@ -146,17 +199,22 @@
           </div>
 
           <!-- Active Role Badge -->
-          <div id="roleBadgeContainer" class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 cursor-pointer hover:bg-slate-700/80 transition" onclick="openRoleModal()">
+          <div id="roleBadgeContainer" class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 transition">
             <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span id="roleLabel" class="text-xs font-bold text-slate-200">Admin Spensa</span>
-            <i class="fa-solid fa-arrows-rotate text-xs text-slate-400 ml-1"></i>
+            <span id="roleLabel" class="text-xs font-bold text-slate-200">Pengguna</span>
           </div>
+          <button onclick="logoutSpensa()" class="px-3 py-1.5 rounded-lg bg-rose-500/90 hover:bg-rose-500 text-white text-xs font-bold transition" title="Keluar">
+            <i class="fa-solid fa-right-from-bracket mr-1"></i> Keluar
+          </button>
         </div>
 
         <!-- Mobile Menu Switch Role Button -->
         <div class="flex md:hidden items-center space-x-2">
-          <button onclick="openRoleModal()" class="px-3 py-1.5 bg-blue-800 hover:bg-blue-700 text-xs font-semibold rounded-lg border border-blue-600">
-            <i class="fa-solid fa-user-shield mr-1"></i> <span id="mobileRoleLabel">Admin</span>
+          <div class="px-2 py-1.5 bg-blue-800/80 text-xs font-semibold rounded-lg border border-blue-600">
+            <i class="fa-solid fa-user-shield mr-1"></i> <span id="mobileRoleLabel">User</span>
+          </div>
+          <button onclick="logoutSpensa()" class="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg">
+            <i class="fa-solid fa-right-from-bracket"></i>
           </button>
         </div>
 
@@ -1026,7 +1084,7 @@
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
         <h3 class="font-black text-slate-800 text-lg flex items-center space-x-2">
           <i class="fa-solid fa-code text-blue-600"></i>
-          <span>Kode Google Apps Script Spensa v4.1.1</span>
+          <span>Kode Google Apps Script Spensa v4.2.0 LOGIN</span>
         </h3>
         <button onclick="closeGASCodeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
       </div>
@@ -1046,8 +1104,188 @@
 
   <script>
 
+    // ============================================================
+    // AUTHENTICATION / SESSION
+    // ============================================================
+    let authToken = localStorage.getItem('spensa_auth_token') || '';
+    let authUser = null;
+    let appInitialized = false;
+
+    function getAuthToken() {
+      return String(authToken || localStorage.getItem('spensa_auth_token') || '').trim();
+    }
+
+    function setAuthSession(result) {
+      authToken = String(result?.token || '').trim();
+      authUser = result?.user || null;
+      if (authToken) localStorage.setItem('spensa_auth_token', authToken);
+      if (authUser) localStorage.setItem('spensa_auth_user', JSON.stringify(authUser));
+    }
+
+    function clearAuthSession() {
+      authToken = '';
+      authUser = null;
+      localStorage.removeItem('spensa_auth_token');
+      localStorage.removeItem('spensa_auth_user');
+    }
+
+    function restoreAuthUser() {
+      try {
+        const saved = JSON.parse(localStorage.getItem('spensa_auth_user') || 'null');
+        if (saved && saved.username) authUser = saved;
+      } catch (_) {
+        localStorage.removeItem('spensa_auth_user');
+      }
+    }
+
+    function authQuery(extra = '') {
+      const token = getAuthToken();
+      if (!token) return extra;
+      const base = extra ? extra + '&' : '';
+      return base + 'token=' + encodeURIComponent(token);
+    }
+
+    function showLoginScreen(message = '') {
+      const screen = document.getElementById('loginScreen');
+      if (screen) screen.classList.remove('hidden');
+      const err = document.getElementById('loginError');
+      if (err) {
+        err.textContent = message;
+        err.classList.toggle('hidden', !message);
+      }
+      setTimeout(() => document.getElementById('loginUsername')?.focus(), 50);
+    }
+
+    function hideLoginScreen() {
+      document.getElementById('loginScreen')?.classList.add('hidden');
+    }
+
+    function setLoginBusy(busy) {
+      const btn = document.getElementById('loginButton');
+      const text = document.getElementById('loginButtonText');
+      const icon = document.getElementById('loginButtonIcon');
+      if (btn) btn.disabled = busy;
+      if (text) text.textContent = busy ? 'Memverifikasi...' : 'Masuk ke Portal';
+      if (icon) icon.className = busy ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-right-to-bracket';
+    }
+
+    function toggleLoginPassword() {
+      const input = document.getElementById('loginPassword');
+      const icon = document.getElementById('loginPasswordIcon');
+      if (!input) return;
+      input.type = input.type === 'password' ? 'text' : 'password';
+      if (icon) icon.className = input.type === 'password' ? 'fa-solid fa-eye' : 'fa-solid fa-eye-slash';
+    }
+
+    async function handleLoginSubmit(event) {
+      event.preventDefault();
+      const username = document.getElementById('loginUsername')?.value.trim() || '';
+      const password = document.getElementById('loginPassword')?.value || '';
+      const url = loadGASUrl();
+      const err = document.getElementById('loginError');
+      if (err) { err.textContent = ''; err.classList.add('hidden'); }
+      if (!username || !password) return;
+      setLoginBusy(true);
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'login', username, password })
+        });
+        const result = await response.json();
+        if (!result || result.status !== 'success' || !result.token) {
+          throw new Error(result?.message || 'Username atau password salah.');
+        }
+        setAuthSession(result);
+        applyAuthenticatedUser();
+        hideLoginScreen();
+        initializeAppAfterLogin();
+        document.getElementById('loginPassword').value = '';
+      } catch (e) {
+        console.error('Login error:', e);
+        showLoginScreen('Login gagal. ' + (e?.message || 'Periksa koneksi dan konfigurasi backend.'));
+      } finally {
+        setLoginBusy(false);
+      }
+    }
+
+    function validateExistingSession(callback) {
+      const token = getAuthToken();
+      if (!token) { callback(false); return; }
+      const url = loadGASUrl();
+      const callbackName = 'spensaValidate_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+      const script = document.createElement('script');
+      let done = false;
+      const cleanup = () => {
+        if (script.parentNode) script.parentNode.removeChild(script);
+        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+      };
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timeout);
+        cleanup();
+        callback(ok);
+      };
+      const timeout = setTimeout(() => finish(false), 10000);
+      window[callbackName] = function(result) {
+        if (result?.status === 'success' && result.user) {
+          authUser = result.user;
+          localStorage.setItem('spensa_auth_user', JSON.stringify(result.user));
+          finish(true);
+        } else {
+          clearAuthSession();
+          finish(false);
+        }
+      };
+      const separator = url.includes('?') ? '&' : '?';
+      script.src = url + separator + authQuery('action=validateSession') + '&callback=' + encodeURIComponent(callbackName) + '&_ts=' + Date.now();
+      script.onerror = () => finish(false);
+      document.head.appendChild(script);
+    }
+
+    function applyAuthenticatedUser() {
+      const role = String(authUser?.role || '').trim();
+      const roleMap = { Admin: 'admin', Petugas: 'scanner', Guru: 'teacher', Pimpinan: 'leader' };
+      currentRole = roleMap[role] || 'viewer';
+      const label = document.getElementById('roleLabel');
+      const mobileLabel = document.getElementById('mobileRoleLabel');
+      const displayName = authUser?.nama || authUser?.username || 'Pengguna';
+      if (label) label.innerText = displayName + ' • ' + (role || 'Pengguna');
+      if (mobileLabel) mobileLabel.innerText = role || 'User';
+      document.querySelectorAll('.admin-only').forEach(el => {
+        el.classList.toggle('hidden', role !== 'Admin');
+      });
+      // Role switching dari UI lama tidak lagi menjadi sumber otorisasi.
+      const roleBadge = document.getElementById('roleBadgeContainer');
+      if (roleBadge) {
+        roleBadge.removeAttribute('onclick');
+        roleBadge.classList.remove('cursor-pointer');
+      }
+      const mobileRoleButton = document.querySelector('.flex.md\\:hidden button[onclick="openRoleModal()"]');
+      if (mobileRoleButton) mobileRoleButton.removeAttribute('onclick');
+    }
+
+    function logoutSpensa() {
+      const token = getAuthToken();
+      clearAuthSession();
+      if (token) {
+        // Logout server dipanggil best-effort; token lokal tetap langsung dihapus.
+        fetch(loadGASUrl(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'logout', token })
+        }).catch(() => {});
+      }
+      if (webcamStream) stopWebcamScanner();
+      if (attendancePollTimer) clearInterval(attendancePollTimer);
+      appInitialized = false;
+      showLoginScreen('Anda telah keluar dari Portal Spensa.');
+    }
+
     // Global App State
-    let currentRole = 'admin'; // 'admin', 'scanner', 'student'
+    let currentRole = 'admin'; // ditetapkan dari role akun setelah login
     let currentTab = 'dashboard';
     let scanMode = 'qr'; // 'qr', 'rfid', 'manual'
     let webcamStream = null;
@@ -1119,7 +1357,7 @@
     }
 
     function loadGASUrl() {
-      const currentUrl = 'https://script.google.com/macros/s/AKfycbxGCyK2k1uU288GUlGBUJ_9v2_9REObpwrBRGuRouhEYHD1gIU-yq7KVSgwChdvCCxksQ/exec';
+      const currentUrl = 'https://script.google.com/macros/s/AKfycbzjNABcdkDHw1pivH6NnwD7Df4ywdwFXTxIJxrLr1k3CpL_7t3HE3rCvQsWOFevht1zdQ/exec';
       const input = document.getElementById('gasScriptUrl');
       if (input) input.value = currentUrl;
       localStorage.setItem('spensa_gas_url', currentUrl);
@@ -1148,6 +1386,8 @@
 
       window[callbackName] = function(response) {
         cleanup();
+        if (response?.code === 'AUTH_REQUIRED' || response?.code === 'INVALID_SESSION' || response?.code === 'SESSION_EXPIRED') { clearAuthSession(); showLoginScreen('Session berakhir. Silakan login kembali.'); return; }
+        if (response?.code === 'AUTH_REQUIRED' || response?.code === 'INVALID_SESSION' || response?.code === 'SESSION_EXPIRED') { clearAuthSession(); showLoginScreen('Session berakhir. Silakan login kembali.'); return; }
         if (!response || response.status !== 'success' || !Array.isArray(response.data)) {
           showToast('Gagal membaca Sheet Peserta.', 'error');
           return;
@@ -1177,7 +1417,7 @@
       };
 
       const separator = url.includes('?') ? '&' : '?';
-      script.src = url + separator + 'action=getParticipants&callback=' + encodeURIComponent(callbackName);
+      script.src = url + separator + authQuery('action=getParticipants') + '&callback=' + encodeURIComponent(callbackName);
       script.onerror = function() {
         cleanup();
         showToast('Koneksi Google Apps Script gagal.', 'error');
@@ -1185,37 +1425,47 @@
       document.head.appendChild(script);
     }
 
-    window.onload = function() {
+    function initializeAppAfterLogin() {
+      if (appInitialized) return;
+      appInitialized = true;
+      applyAuthenticatedUser();
+
       // Load settings/student cache only as a temporary UI fallback.
       // Attendance itself is ALWAYS rebuilt from Google Sheet.
       loadLocalStorage();
       attendanceLogs = [];
       loadGASUrl();
 
-      // Start Clock Update
       setInterval(updateClock, 1000);
       updateClock();
-
-      // Initialize Scanner Keyboard Listener for RFID USB Scanner
       setupRFIDKeyboardListener();
-      // Siapkan daftar webcam PC (label kamera muncul setelah izin kamera diberikan).
       refreshCameraList();
-
-      // Render Initial Data Views
       refreshStudentClassFilter();
       renderDashboard();
       populateCardStudentDropdown();
       renderStudentTable();
       renderAttendanceLogTable();
       setupQuickTapButtons();
-
-      // Default date picker to today
       document.getElementById('logFilterDate').value = localDateYMD();
-
-      // Ambil data peserta terlebih dahulu. Setelah data peserta selesai,
-      // absensi server dimuat agar pemetaan NIS -> siswa selalu akurat.
       loadStudentsFromGoogleSheets();
       startAttendancePolling();
+    }
+
+    window.onload = function() {
+      loadGASUrl();
+      restoreAuthUser();
+      if (!getAuthToken()) {
+        showLoginScreen();
+        return;
+      }
+      validateExistingSession(function(valid) {
+        if (valid) {
+          hideLoginScreen();
+          initializeAppAfterLogin();
+        } else {
+          showLoginScreen('Session tidak valid atau sudah berakhir. Silakan login kembali.');
+        }
+      });
     };
 
     function updateClock() {
@@ -1512,6 +1762,7 @@
         clearTimeout(timeout);
         cleanup();
 
+        if (response?.code === 'AUTH_REQUIRED' || response?.code === 'INVALID_SESSION' || response?.code === 'SESSION_EXPIRED') { clearAuthSession(); showLoginScreen('Session berakhir. Silakan login kembali.'); return; }
         if (!response || response.status !== 'success' || !response.student || !response.attendance) {
           const msg = response?.message || 'Presensi gagal diproses oleh server.';
           playAudioBeep('error');
@@ -1552,7 +1803,8 @@
         'requestedType=AUTO',
         'mode=' + encodeURIComponent(modeText || 'RFID'),
         '_ts=' + Date.now(),
-        'callback=' + encodeURIComponent(callbackName)
+        'callback=' + encodeURIComponent(callbackName),
+        'token=' + encodeURIComponent(getAuthToken())
       ].join('&');
       script.src = url + separator + params;
       script.onerror = () => finishError('Koneksi ke Google Apps Script gagal.');
@@ -1717,7 +1969,7 @@
 
       const separator = url.includes('?') ? '&' : '?';
       script.src = url + separator +
-        'action=getAttendance' +
+        authQuery('action=getAttendance') +
         '&date=' + encodeURIComponent(date) +
         '&_ts=' + Date.now() +
         '&callback=' + encodeURIComponent(callbackName);
@@ -2148,7 +2400,8 @@
           kelas: student.class,
           jenis: student.role === 'Guru' ? 'Guru' : 'Siswa',
           rfid: student.rfid,
-          foto: student.photo
+          foto: student.photo,
+          token: getAuthToken()
         })
       }).catch(e => console.error(e));
     }
@@ -2160,7 +2413,7 @@
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deleteStudent', nis: student.nis })
+        body: JSON.stringify({ action: 'deleteStudent', nis: student.nis, token: getAuthToken() })
       }).catch(e => console.error(e));
     }
 
