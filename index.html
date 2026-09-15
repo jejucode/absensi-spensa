@@ -1974,14 +1974,19 @@
         '&callback=' + encodeURIComponent(callbackName);
 
       script.onerror = function() {
-        if (!finish()) return;
-        if (showMessage) showToast('Koneksi Google Apps Script gagal. Mencoba ulang...', 'error');
-        scheduleRetry();
-        if (attendanceSyncPending) {
-          attendanceSyncPending = false;
-          setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
-        }
-      };
+  attendanceSyncInFlight = false;
+
+  if (showMessage) {
+    showToast('Koneksi Google Apps Script gagal. Mencoba ulang...', 'error');
+  }
+
+  scheduleRetry();
+
+  if (attendanceSyncPending) {
+    attendanceSyncPending = false;
+    setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
+  }
+};
 
       document.head.appendChild(script);
     }
