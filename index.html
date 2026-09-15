@@ -2249,6 +2249,39 @@
       showToast('Data siswa berhasil dihapus.', 'info');
     }
 
+function formatAttendanceTime(value) {
+  if (!value || value === '-') return '-';
+
+  const text = String(value).trim();
+
+  // Jika sudah berupa HH:mm atau HH:mm:ss
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(text)) {
+    return text;
+  }
+
+  // Format dari Google Apps Script, misalnya:
+  // Sat Dec 30 1899 09:00:52 GMT+0700 ...
+  const match = text.match(/\b(\d{1,2}):(\d{2}):(\d{2})\b/);
+
+  if (match) {
+    return `${match[1].padStart(2, '0')}:${match[2]}:${match[3]}`;
+  }
+
+  // Fallback jika format berubah
+  const date = new Date(value);
+
+  if (!isNaN(date.getTime())) {
+    return date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  }
+
+  return text;
+}
+
 function formatAttendanceDate(value) {
   if (!value) return '-';
 
@@ -2269,28 +2302,6 @@ function formatAttendanceDate(value) {
     ];
 
     return `${day} ${months[month - 1]} ${year}`;
-  }
-
-  return text;
-}
-  // Format dari Google Apps Script, misalnya:
-  // Sat Dec 30 1899 09:00:52 GMT+0700 ...
-  const match = text.match(/\b(\d{1,2}):(\d{2}):(\d{2})\b/);
-
-  if (match) {
-    return `${match[1].padStart(2, '0')}:${match[2]}:${match[3]}`;
-  }
-
-  // Fallback jika format berubah
-  const date = new Date(value);
-
-  if (!isNaN(date.getTime())) {
-    return date.toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    });
   }
 
   return text;
