@@ -2257,7 +2257,30 @@ function formatAttendanceTime(value) {
   if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(text)) {
     return text;
   }
+function formatAttendanceDate(value) {
+  if (!value) return '-';
 
+  const text = String(value).trim();
+
+  // Format YYYY-MM-DD
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (match) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April',
+      'Mei', 'Juni', 'Juli', 'Agustus',
+      'September', 'Oktober', 'November', 'Desember'
+    ];
+
+    return `${day} ${months[month - 1]} ${year}`;
+  }
+
+  return text;
+}
   // Format dari Google Apps Script, misalnya:
   // Sat Dec 30 1899 09:00:52 GMT+0700 ...
   const match = text.match(/\b(\d{1,2}):(\d{2}):(\d{2})\b/);
@@ -2339,7 +2362,7 @@ function formatAttendanceTime(value) {
 
   if (!filtered.length) {
     tbody.innerHTML = `
-      <tr>
+      
         <td colspan="6" class="py-8 px-4 text-center text-slate-400">
           <div class="flex flex-col items-center gap-2">
             <i class="fa-solid fa-calendar-xmark text-2xl text-slate-300"></i>
@@ -2390,7 +2413,9 @@ function formatAttendanceTime(value) {
             NISN: ${studentNis}
           </span>
         </td>
-
+        <td class="py-3 px-4 font-semibold text-slate-600">
+          ${formatAttendanceDate(log.date)}
+        </td>
         <td class="py-3 px-4 font-semibold text-slate-600">
           Kelas ${studentClass}
         </td>
