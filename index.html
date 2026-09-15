@@ -1879,7 +1879,7 @@
           attendanceSyncPending = false;
           setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
         }
-      }, 20000);
+      }, 30000);
 
       window[callbackName] = function(response) {
         if (finished) return;
