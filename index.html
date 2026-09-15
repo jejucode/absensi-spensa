@@ -1882,10 +1882,9 @@
       }, 30000);
 
       window[callbackName] = function(response) {
-        if (finished) return;
-        if (!finish()) return;
+  if (finished) return;
 
-        if (!response || response.status !== 'success' || !Array.isArray(response.data)) {
+  if (!response || response.status !== 'success' || !Array.isArray(response.data)) {
           if (showMessage) showToast(response?.message || 'Gagal membaca data absensi.', 'error');
           scheduleRetry();
           if (attendanceSyncPending) {
