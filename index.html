@@ -1754,7 +1754,7 @@
         showScanResult(null, false, message || 'Presensi gagal diproses.', modeText);
         showToast(message || 'Presensi gagal diproses.', 'error');
       };
-      const timeout = setTimeout(() => finishError('Server Google Sheet tidak merespons. Silakan coba lagi.'), 10000);
+      const timeout = setTimeout(() => finishError('Server Google Sheet tidak merespons. Silakan coba lagi.'), 30000);
 
       window[callbackName] = function(response) {
         if (finished) return;
