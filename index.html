@@ -1399,12 +1399,12 @@
           nis: String(s.nis || '').trim(),
           class: String(s.class || '').trim(),
           rfid: String(s.rfid || '').trim(),
-          photo: String(s.photo || '').trim(),
+          photo: String(s.photo || '').trim().startsWith('data:') ? '' : String(s.photo || '').trim().slice(0, 2000),
           role: String(s.role || '').trim() || 'Siswa'
         })).filter(s => s.nis || s.name || s.rfid);
 
         // Google Sheet menjadi sumber data utama.
-        localStorage.setItem('spensa_students', JSON.stringify(studentData));
+        saveLocalStorage();
         refreshStudentClassFilter();
         renderDashboard();
         populateCardStudentDropdown();
@@ -1679,14 +1679,21 @@
         lastKeyTime = currentTime;
 
         if (e.key === 'Enter') {
-          if (rfidBuffer.length > 3) {
-            document.getElementById('rfidBufferInput').value = rfidBuffer;
-            processScannedCode(rfidBuffer, 'RFID Tap');
-            rfidBuffer = '';
+          const code = String(rfidBuffer || '').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 32);
+          if (code.length > 3) {
+            document.getElementById('rfidBufferInput').value = code;
+            processScannedCode(code, 'RFID Tap');
           }
+          rfidBuffer = '';
+          return;
         } else if (e.key.length === 1) {
-          rfidBuffer += e.key;
-          document.getElementById('rfidBufferInput').value = rfidBuffer;
+          // RFID USB HID biasanya mengirim kode pendek (angka/huruf).
+          // Batasi buffer agar input rusak tidak pernah membentuk payload besar.
+          const ch = e.key.replace(/[^0-9A-Za-z_-]/g, '');
+          if (ch && rfidBuffer.length < 32) {
+            rfidBuffer += ch;
+            document.getElementById('rfidBufferInput').value = rfidBuffer;
+          }
         }
       });
     }
@@ -1702,7 +1709,13 @@
     }
 
     function processScannedCode(scannedValue, modeText, statusOverride = 'AUTO') {
-      const value = String(scannedValue || '').trim();
+      // Normalisasi kode scanner. Jangan pernah meneruskan payload besar ke server.
+      let value = String(scannedValue || '').trim();
+      if (modeText === 'RFID Tap') {
+        value = value.replace(/[^0-9A-Za-z_-]/g, '').slice(0, 32);
+      } else {
+        value = value.slice(0, 512);
+      }
       if (!value) return;
 
       // Cegah satu tap RFID terbaca berkali-kali oleh keyboard scanner.
@@ -2578,8 +2591,9 @@ function formatAttendanceDate(value) {
           nama: student.name,
           kelas: student.class,
           jenis: student.role === 'Guru' ? 'Guru' : 'Siswa',
-          rfid: student.rfid,
-          foto: student.photo,
+          rfid: String(student.rfid || '').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 32),
+          // Simpan URL foto saja; base64/data URL tidak dikirim ke Apps Script.
+          foto: String(student.photo || '').startsWith('data:') ? '' : String(student.photo || '').slice(0, 2000),
           token: getAuthToken()
         })
       }).catch(e => console.error(e));
@@ -2727,9 +2741,25 @@ function jsonResponse(obj) {
     }
 
     function saveLocalStorage() {
-      localStorage.setItem('spensa_students', JSON.stringify(studentData));
-      localStorage.setItem('spensa_logs', JSON.stringify(attendanceLogs));
-      localStorage.setItem('spensa_time', JSON.stringify(timeSettings));
+      try {
+        // Google Sheets adalah sumber data utama. Browser hanya menyimpan
+        // cache ringan; data foto base64 tidak boleh memenuhi storage.
+        const lightweightStudents = studentData.map(s => ({
+          id: String(s.id || '').slice(0, 100),
+          name: String(s.name || '').slice(0, 200),
+          nis: String(s.nis || '').slice(0, 50),
+          class: String(s.class || '').slice(0, 50),
+          rfid: String(s.rfid || '').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 32),
+          photo: String(s.photo || '').startsWith('data:') ? '' : String(s.photo || '').slice(0, 2000),
+          role: String(s.role || 'Siswa').slice(0, 50)
+        }));
+
+        localStorage.setItem('spensa_students', JSON.stringify(lightweightStudents));
+        localStorage.setItem('spensa_logs', JSON.stringify(attendanceLogs));
+        localStorage.setItem('spensa_time', JSON.stringify(timeSettings));
+      } catch (err) {
+        console.warn('Cache browser dilewati:', err);
+      }
     }
 
     function loadLocalStorage() {
