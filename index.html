@@ -1740,14 +1740,21 @@
         String(s.name || '').trim().toLowerCase() === value.toLowerCase()
       );
 
-      if (localStudent) {
-        document.getElementById('scanResultEmpty')?.classList.add('hidden');
-        document.getElementById('scanResultContent')?.classList.remove('hidden');
-        const nameEl = document.getElementById('scanResName');
-        if (nameEl) nameEl.innerText = localStudent.name;
-        const classEl = document.getElementById('scanResClass');
-        if (classEl) classEl.innerText = `Kelas ${localStudent.class} • NISN: ${localStudent.nis}`;
-      }
+     if (localStudent) {
+  document.getElementById('scanResultEmpty')?.classList.add('hidden');
+  document.getElementById('scanResultContent')?.classList.remove('hidden');
+
+  const nameEl = document.getElementById('scanResName');
+  if (nameEl) nameEl.innerText = localStudent.name;
+
+  const classEl = document.getElementById('scanResClass');
+  if (classEl) classEl.innerText = `Kelas ${localStudent.class} • NISN: ${localStudent.nis}`;
+
+  const photoEl = document.getElementById('scanResPhoto');
+  if (photoEl) {
+    photoEl.src = localStudent.photo || 'https://placehold.co/150x150/3b82f6/white?text=Foto';
+  }
+}
 
       showToast('Memproses presensi ke Google Sheet...', 'info');
 
