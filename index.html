@@ -1184,31 +1184,74 @@
       const password = document.getElementById('loginPassword')?.value || '';
       const url = loadGASUrl();
       const err = document.getElementById('loginError');
-      if (err) { err.textContent = ''; err.classList.add('hidden'); }
+
+      if (err) {
+        err.textContent = '';
+        err.classList.add('hidden');
+      }
+
       if (!username || !password) return;
+      if (!url) {
+        showLoginScreen('URL Google Apps Script belum diatur.');
+        return;
+      }
+
       setLoginBusy(true);
 
-      try {
-        const loginUrl = url + '?action=login&username=' +
-  encodeURIComponent(username) + '&password=' +
-  encodeURIComponent(password);
+      const callbackName = 'spensaLogin_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+      const script = document.createElement('script');
+      let finished = false;
 
-const response = await fetch(loginUrl);
-const result = await response.json();
+      const cleanup = () => {
+        if (script.parentNode) script.parentNode.removeChild(script);
+        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+      };
+
+      const finish = () => {
+        if (finished) return false;
+        finished = true;
+        clearTimeout(timeout);
+        cleanup();
+        setLoginBusy(false);
+        return true;
+      };
+
+      const timeout = setTimeout(() => {
+        if (!finish()) return;
+        showLoginScreen('Login gagal. Server Google Apps Script tidak merespons.');
+      }, 15000);
+
+      window[callbackName] = function(result) {
+        if (!finish()) return;
+
         if (!result || result.status !== 'success' || !result.token) {
-          throw new Error(result?.message || 'Username atau password salah.');
+          showLoginScreen(result?.message || 'Username atau password salah.');
+          return;
         }
+
         setAuthSession(result);
         applyAuthenticatedUser();
         hideLoginScreen();
         initializeAppAfterLogin();
-        document.getElementById('loginPassword').value = '';
-      } catch (e) {
-        console.error('Login error:', e);
-        showLoginScreen('Login gagal. ' + (e?.message || 'Periksa koneksi dan konfigurasi backend.'));
-      } finally {
-        setLoginBusy(false);
-      }
+
+        const passwordInput = document.getElementById('loginPassword');
+        if (passwordInput) passwordInput.value = '';
+      };
+
+      const separator = url.includes('?') ? '&' : '?';
+      script.src = url + separator +
+        'action=login' +
+        '&username=' + encodeURIComponent(username) +
+        '&password=' + encodeURIComponent(password) +
+        '&callback=' + encodeURIComponent(callbackName) +
+        '&_ts=' + Date.now();
+
+      script.onerror = function() {
+        if (!finish()) return;
+        showLoginScreen('Login gagal. Koneksi ke Google Apps Script tidak dapat dijangkau.');
+      };
+
+      document.head.appendChild(script);
     }
 
     function validateExistingSession(callback) {
@@ -1281,6 +1324,11 @@ const result = await response.json();
       }
       if (webcamStream) stopWebcamScanner();
       if (attendancePollTimer) clearInterval(attendancePollTimer);
+      if (attendanceSyncRetryTimer) clearTimeout(attendanceSyncRetryTimer);
+      attendancePollTimer = null;
+      attendanceSyncRetryTimer = null;
+      attendanceSyncInFlight = false;
+      attendanceSyncPending = false;
       appInitialized = false;
       showLoginScreen('Anda telah keluar dari Portal Spensa.');
     }
@@ -1387,8 +1435,15 @@ const result = await response.json();
 
       window[callbackName] = function(response) {
         cleanup();
-        if (response?.code === 'AUTH_REQUIRED' || response?.code === 'INVALID_SESSION' || response?.code === 'SESSION_EXPIRED') { clearAuthSession(); showLoginScreen('Session berakhir. Silakan login kembali.'); return; }
-        if (response?.code === 'AUTH_REQUIRED' || response?.code === 'INVALID_SESSION' || response?.code === 'SESSION_EXPIRED') { clearAuthSession(); showLoginScreen('Session berakhir. Silakan login kembali.'); return; }
+        if (
+          response?.code === 'AUTH_REQUIRED' ||
+          response?.code === 'INVALID_SESSION' ||
+          response?.code === 'SESSION_EXPIRED'
+        ) {
+          clearAuthSession();
+          showLoginScreen('Session berakhir. Silakan login kembali.');
+          return;
+        }
         if (!response || response.status !== 'success' || !Array.isArray(response.data)) {
           showToast('Gagal membaca Sheet Peserta.', 'error');
           return;
@@ -1671,7 +1726,12 @@ const result = await response.json();
     let rfidBuffer = '';
     let lastKeyTime = Date.now();
 
+    let rfidListenerInitialized = false;
+
     function setupRFIDKeyboardListener() {
+      if (rfidListenerInitialized) return;
+      rfidListenerInitialized = true;
+
       window.addEventListener('keydown', (e) => {
         if (currentTab !== 'scan' || scanMode !== 'rfid') return;
 
@@ -1789,7 +1849,7 @@ const result = await response.json();
           playAudioBeep('error');
           showScanResult(null, false, msg, modeText);
           showToast(msg, 'error');
-          setTimeout(() => loadAttendanceFromGoogleSheets(), 250);
+          setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
           return;
         }
 
@@ -1814,14 +1874,14 @@ const result = await response.json();
 
         // Sinkronisasi penuh dari server. Google Sheet adalah sumber utama;
         // localStorage hanya cache tampilan dan tidak boleh menimpa server.
-        setTimeout(() => loadAttendanceFromGoogleSheets(), 250);
+        setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
       };
 
       const separator = url.includes('?') ? '&' : '?';
       const params = [
         'action=scanAttendance',
         'value=' + encodeURIComponent(value),
-        'requestedType=AUTO',
+        'requestedType=' + encodeURIComponent(statusOverride || 'AUTO'),
         'mode=' + encodeURIComponent(modeText || 'RFID'),
         '_ts=' + Date.now(),
         'callback=' + encodeURIComponent(callbackName),
@@ -1842,6 +1902,7 @@ const result = await response.json();
     let attendanceSyncInFlight = false;
     let attendanceSyncPending = false;
     let attendanceSyncRetryTimer = null;
+    let attendanceListenersInitialized = false;
 
     function localDateYMD(date = new Date()) {
       const y = date.getFullYear();
@@ -1903,13 +1964,27 @@ const result = await response.json();
       }, 60000);
 
       window[callbackName] = function(response) {
-  if (finished) return;
+        if (finished) return;
 
-  if (!response || response.status !== 'success' || !Array.isArray(response.data)) {
-          if (showMessage) showToast(response?.message || 'Gagal membaca data absensi.', 'error');
+        if (
+          response?.code === 'AUTH_REQUIRED' ||
+          response?.code === 'INVALID_SESSION' ||
+          response?.code === 'SESSION_EXPIRED'
+        ) {
+          finish();
+          clearAuthSession();
+          showLoginScreen('Session berakhir. Silakan login kembali.');
+          return;
+        }
+
+        if (!response || response.status !== 'success' || !Array.isArray(response.data)) {
+          const msg = response?.message || 'Gagal membaca data absensi.';
+          const hadPending = attendanceSyncPending;
+          attendanceSyncPending = false;
+          finish();
+          if (showMessage) showToast(msg, 'error');
           scheduleRetry();
-          if (attendanceSyncPending) {
-            attendanceSyncPending = false;
+          if (hadPending) {
             setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
           }
           return;
@@ -1996,28 +2071,28 @@ const result = await response.json();
         '&callback=' + encodeURIComponent(callbackName);
 
       script.onerror = function() {
-  attendanceSyncInFlight = false;
+        const hadPending = attendanceSyncPending;
+        attendanceSyncPending = false;
 
-  if (showMessage) {
-    showToast('Koneksi Google Apps Script gagal. Mencoba ulang...', 'error');
-  }
+        if (!finish()) return;
 
-  scheduleRetry();
+        if (showMessage) {
+          showToast('Koneksi Google Apps Script gagal. Mencoba ulang...', 'error');
+        }
 
-  if (attendanceSyncPending) {
-    attendanceSyncPending = false;
-    setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
-  }
-};
+        scheduleRetry();
+
+        if (hadPending) {
+          setTimeout(() => loadAttendanceFromGoogleSheets(false), 250);
+        }
+      };
 
       document.head.appendChild(script);
     }
 
     function startAttendancePolling() {
-  if (attendancePollTimer) clearInterval(attendancePollTimer);
-  if (attendanceSyncRetryTimer) clearTimeout(attendanceSyncRetryTimer);
-
-  attendancePollTimer = setInterval(() => {
+      if (attendancePollTimer) clearInterval(attendancePollTimer);
+      if (attendanceSyncRetryTimer) clearTimeout(attendanceSyncRetryTimer);
 
       // Sinkronisasi berkala. Request tidak akan bertumpuk.
       attendancePollTimer = setInterval(() => {
@@ -2026,17 +2101,20 @@ const result = await response.json();
         }
       }, 5000);
 
-      // Saat tab kembali aktif, langsung minta data terbaru.
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          setTimeout(() => loadAttendanceFromGoogleSheets(false), 150);
-        }
-      });
+      // Pasang listener global hanya sekali agar tidak menumpuk setelah logout/login.
+      if (!attendanceListenersInitialized) {
+        attendanceListenersInitialized = true;
 
-      // Recovery saat koneksi/jaringan kembali tersedia.
-      window.addEventListener('online', () => {
-        setTimeout(() => loadAttendanceFromGoogleSheets(false), 300);
-      });
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            setTimeout(() => loadAttendanceFromGoogleSheets(false), 150);
+          }
+        });
+
+        window.addEventListener('online', () => {
+          setTimeout(() => loadAttendanceFromGoogleSheets(false), 300);
+        });
+      }
     }
 
     function showScanResult(student, success, message, modeText, status = 'Hadir', isCheckOut = false) {
@@ -2505,7 +2583,15 @@ function formatAttendanceDate(value) {
       document.getElementById('dashHadirCount').innerText = todayLogs.filter(l => l.status === 'Hadir').length;
       document.getElementById('dashTerlambatCount').innerText = todayLogs.filter(l => l.status === 'Terlambat').length;
       document.getElementById('dashIzinSakitCount').innerText = todayLogs.filter(l => l.status === 'Izin' || l.status === 'Sakit').length;
-      document.getElementById('dashAlpaCount').innerText = Math.max(0, studentData.length - todayLogs.length);
+      const eligibleStudents = studentData.filter(s => String(s.role || 'Siswa').toLowerCase() === 'siswa');
+      const attendedStudentIds = new Set(
+        todayLogs
+          .filter(l => ['Hadir', 'Terlambat'].includes(String(l.status || '')))
+          .map(l => String(l.studentId || l.nis || '').trim())
+          .filter(Boolean)
+      );
+      document.getElementById('dashAlpaCount').innerText =
+        Math.max(0, eligibleStudents.length - attendedStudentIds.size);
 
       // Live Feed Dashboard
       const feedContainer = document.getElementById('dashboardLiveFeed');
@@ -2535,23 +2621,41 @@ function formatAttendanceDate(value) {
     }
 
     function renderDashboardChart() {
-      const ctx = document.getElementById('attendanceChart').getContext('2d');
+      const canvas = document.getElementById('attendanceChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
       if (chartInstance) chartInstance.destroy();
+
+      const days = [];
+      const hadirData = [];
+      const terlambatData = [];
+
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() - i);
+        const ymd = localDateYMD(d);
+        const dayLogs = attendanceLogs.filter(l => String(l.date || '') === ymd);
+
+        days.push(d.toLocaleDateString('id-ID', { weekday: 'short' }));
+        hadirData.push(dayLogs.filter(l => String(l.status || '') === 'Hadir').length);
+        terlambatData.push(dayLogs.filter(l => String(l.status || '') === 'Terlambat').length);
+      }
 
       chartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
-          labels: ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'],
+          labels: days,
           datasets: [
             {
               label: 'Hadir Tepat Waktu',
-              data: [42, 45, 40, 44, 41, 38],
+              data: hadirData,
               backgroundColor: '#10b981',
               borderRadius: 6
             },
             {
               label: 'Terlambat',
-              data: [5, 3, 6, 2, 4, 3],
+              data: terlambatData,
               backgroundColor: '#f59e0b',
               borderRadius: 6
             }
@@ -2631,107 +2735,797 @@ function formatAttendanceDate(value) {
 
     function openGASScriptModal() {
       const scriptCode = `/**
- * PORTAL ABSENSI SPENSA - GOOGLE APPS SCRIPT
- * Sheet Peserta: A=NIS, B=Nama, C=Kelas, D=Jenis, E=RFID, F=Foto
- * Sheet Absensi: UUID, Tanggal, Kelas, NIS, Nama, Status, Waktu, Timestamp
+ * PORTAL ABSENSI SPENSA - GOOGLE APPS SCRIPT BACKEND
+ * Compatible dengan frontend Portal Absensi Spensa.
+ *
+ * SHEET PESERTA:
+ * A=NIS | B=Nama | C=Kelas | D=Jenis | E=RFID | F=Foto
+ *
+ * SHEET ABSENSI:
+ * A=ID | B=Tanggal | C=Kelas | D=NIS | E=Nama | F=Status |
+ * G=Waktu | H=Timestamp | I=Tipe | J=Mode
+ *
+ * SHEET PENGGUNA:
+ * A=Username | B=PasswordHash | C=Nama | D=Role | E=Aktif
+ *
+ * Jika sheet Pengguna belum ada, akun awal dibuat:
+ * username: admin
+ * password: admin123
+ * SEGERA ubah password setelah login.
  */
 
 const APP = Object.freeze({
-  VERSION: '2.0.0',
+  VERSION: '4.3.0',
   TIMEZONE: 'Asia/Jakarta',
-  SHEETS: { SETTINGS: 'Pengaturan', PARTICIPANTS: 'Peserta', ATTENDANCE: 'Absensi' }
+  SESSION_SECONDS: 21600,
+  MAX_SCAN_VALUE: 512,
+  MAX_RFID: 32,
+  SHEETS: {
+    SETTINGS: 'Pengaturan',
+    PARTICIPANTS: 'Peserta',
+    ATTENDANCE: 'Absensi',
+    USERS: 'Pengguna'
+  }
 });
 
 function doGet(e) {
-  const action = e && e.parameter ? e.parameter.action : '';
-  if (action === 'getParticipants') {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName(APP.SHEETS.PARTICIPANTS);
-    const rows = sheet ? sheet.getDataRange().getValues() : [];
-    const data = [];
+  try {
+    const p = (e && e.parameter) ? e.parameter : {};
+    const action = String(p.action || '').trim();
 
-    // Baris pertama adalah header: NIS | Nama | Kelas | Jenis | RFID | Foto
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
-      if (r.every(v => v === '' || v === null)) continue;
-      data.push({
-        id: String(r[0] || r[4] || i),
-        nis: String(r[0] || '').trim(),
-        name: String(r[1] || '').trim(),
-        class: String(r[2] || '').trim(),
-        role: String(r[3] || '').toLowerCase().includes('guru') || String(r[3] || '').toLowerCase().includes('staf') ? 'Guru' : 'Siswa',
-        rfid: String(r[4] || '').trim(),
-        photo: String(r[5] || '').trim()
-      });
+    if (action === 'login') {
+      return handleLogin_(p);
     }
 
-    const result = { status: 'success', data: data };
-    const callback = e.parameter.callback;
-    if (callback) {
-      return ContentService.createTextOutput(callback + '(' + JSON.stringify(result) + ')')
-        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    if (action === 'validateSession') {
+      return handleValidateSession_(p);
     }
-    return ContentService.createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
+
+    if (action === 'logout') {
+      return handleLogout_(p);
+    }
+
+    if (action === 'getParticipants') {
+      return handleGetParticipants_(p);
+    }
+
+    if (action === 'getAttendance') {
+      return handleGetAttendance_(p);
+    }
+
+    if (action === 'scanAttendance') {
+      return handleScanAttendance_(p);
+    }
+
+    return output_({
+      status: 'success',
+      message: 'Portal Absensi Spensa GAS Engine Ready',
+      version: APP.VERSION
+    }, p.callback);
+  } catch (err) {
+    return output_({
+      status: 'error',
+      code: err && err.authCode ? err.authCode : 'SERVER_ERROR',
+      message: safeError_(err)
+    }, e && e.parameter ? e.parameter.callback : '');
   }
-
-  return ContentService.createTextOutput('Portal Absensi Spensa GAS Engine Ready');
 }
 
 function doPost(e) {
   try {
-    const data = JSON.parse(e.postData.contents || '{}');
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const data = parsePost_(e);
+    const action = String(data.action || '').trim();
 
-    if (data.action === 'saveStudent') {
-      const sheet = ss.getSheetByName(APP.SHEETS.PARTICIPANTS) || ss.insertSheet(APP.SHEETS.PARTICIPANTS);
-      if (sheet.getLastRow() === 0) {
-        sheet.appendRow(['NIS', 'Nama', 'Kelas', 'Jenis', 'RFID', 'Foto']);
-      }
-      const values = sheet.getDataRange().getValues();
-      let foundRow = -1;
-      for (let i = 1; i < values.length; i++) {
-        if (String(values[i][0]) === String(data.nis)) {
-          foundRow = i + 1;
-          break;
-        }
-      }
-      const row = [data.nis || '', data.nama || '', data.kelas || '', data.jenis || 'Siswa', data.rfid || '', data.foto || ''];
-      if (foundRow > 0) sheet.getRange(foundRow, 1, 1, 6).setValues([row]);
-      else sheet.appendRow(row);
-      return jsonResponse({ status: 'success', action: 'saveStudent' });
+    if (action === 'logout') {
+      return handleLogout_(data);
     }
 
-    if (data.action === 'deleteStudent') {
-      const sheet = ss.getSheetByName(APP.SHEETS.PARTICIPANTS);
-      if (sheet) {
-        const values = sheet.getDataRange().getValues();
-        for (let i = values.length - 1; i >= 1; i--) {
-          if (String(values[i][0]) === String(data.nis)) sheet.deleteRow(i + 1);
-        }
-      }
-      return jsonResponse({ status: 'success', action: 'deleteStudent' });
+    if (action === 'saveStudent') {
+      requireRole_(data.token, ['Admin']);
+      return handleSaveStudent_(data);
     }
 
-    // Default: simpan absensi
-    const sheet = ss.getSheetByName(APP.SHEETS.ATTENDANCE) || ss.insertSheet(APP.SHEETS.ATTENDANCE);
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['ID', 'Tanggal', 'Kelas', 'NIS', 'Nama', 'Status', 'Waktu', 'Timestamp', 'Tipe']);
+    if (action === 'deleteStudent') {
+      requireRole_(data.token, ['Admin']);
+      return handleDeleteStudent_(data);
     }
-    sheet.appendRow([
-      Utilities.getUuid(), data.tanggal || new Date(), data.kelas || '', data.nis || '',
-      data.nama || '', data.status || 'Hadir', data.waktu || '', new Date(), data.tipe || ''
-    ]);
-    return jsonResponse({ status: 'success', action: 'attendance' });
+
+    if (action === 'scanAttendance') {
+      requireSession_(data.token);
+      return handleScanAttendance_(data);
+    }
+
+    return jsonResponse_({
+      status: 'error',
+      message: 'Action tidak dikenal.'
+    });
   } catch (err) {
-    return jsonResponse({ status: 'error', message: err.toString() });
+    return jsonResponse_({
+      status: 'error',
+      code: err && err.authCode ? err.authCode : 'SERVER_ERROR',
+      message: safeError_(err)
+    });
   }
 }
 
-function jsonResponse(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
+/* =========================
+   AUTHENTICATION / SESSION
+   ========================= */
+
+function handleLogin_(p) {
+  const username = sanitizeText_(p.username, 80);
+  const password = String(p.password || '').slice(0, 200);
+
+  if (!username || !password) {
+    return output_({ status: 'error', message: 'Username dan password wajib diisi.' }, p.callback);
+  }
+
+  const user = findUser_(username);
+  if (!user || !user.active || !verifyPassword_(password, user.passwordHash)) {
+    return output_({ status: 'error', message: 'Username atau password salah.' }, p.callback);
+  }
+
+  const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+  const session = {
+    username: user.username,
+    nama: user.name || user.username,
+    role: normalizeRole_(user.role)
+  };
+
+  CacheService.getScriptCache().put(
+    'SESSION_' + token,
+    JSON.stringify(session),
+    APP.SESSION_SECONDS
+  );
+
+  return output_({
+    status: 'success',
+    token: token,
+    user: session
+  }, p.callback);
+}
+
+function handleValidateSession_(p) {
+  const session = getSession_(p.token);
+  if (!session) {
+    return output_({
+      status: 'error',
+      code: 'SESSION_EXPIRED',
+      message: 'Session tidak valid atau sudah berakhir.'
+    }, p.callback);
+  }
+
+  return output_({
+    status: 'success',
+    user: session
+  }, p.callback);
+}
+
+function handleLogout_(p) {
+  const token = String(p.token || '').trim();
+  if (token) CacheService.getScriptCache().remove('SESSION_' + token);
+
+  return output_({
+    status: 'success',
+    message: 'Logout berhasil.'
+  }, p.callback);
+}
+
+function requireSession_(token) {
+  const session = getSession_(token);
+  if (!session) throw authError_('AUTH_REQUIRED', 'Silakan login terlebih dahulu.');
+  return session;
+}
+
+function requireRole_(token, roles) {
+  const session = requireSession_(token);
+  if (roles.indexOf(session.role) === -1) {
+    throw new Error('Akses ditolak untuk role ' + session.role + '.');
+  }
+  return session;
+}
+
+function getSession_(token) {
+  const clean = String(token || '').trim();
+  if (!clean) return null;
+
+  const raw = CacheService.getScriptCache().get('SESSION_' + clean);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function authError_(code, message) {
+  const err = new Error(message);
+  err.authCode = code;
+  return err;
+}
+
+/* =========================
+   PARTICIPANTS
+   ========================= */
+
+function handleGetParticipants_(p) {
+  requireSession_(p.token);
+
+  const sheet = getOrCreateSheet_(APP.SHEETS.PARTICIPANTS, [
+    'NIS', 'Nama', 'Kelas', 'Jenis', 'RFID', 'Foto'
+  ]);
+
+  const rows = getDataRows_(sheet);
+  const data = [];
+
+  rows.forEach(function(r, i) {
+    if (r.every(function(v) { return v === '' || v === null; })) return;
+
+    data.push({
+      id: String(r[0] || r[4] || (i + 1)).trim(),
+      nis: String(r[0] || '').trim(),
+      name: String(r[1] || '').trim(),
+      class: String(r[2] || '').trim(),
+      role: roleFromJenis_(r[3]),
+      rfid: normalizeRFID_(r[4]),
+      photo: String(r[5] || '').trim().slice(0, 2000)
+    });
+  });
+
+  return output_({ status: 'success', data: data }, p.callback);
+}
+
+/* =========================
+   ATTENDANCE
+   ========================= */
+
+function handleGetAttendance_(p) {
+  requireSession_(p.token);
+
+  const date = normalizeDate_(p.date) || todayYMD_();
+  const sheet = getOrCreateSheet_(APP.SHEETS.ATTENDANCE, [
+    'ID', 'Tanggal', 'Kelas', 'NIS', 'Nama', 'Status',
+    'Waktu', 'Timestamp', 'Tipe', 'Mode'
+  ]);
+
+  const rows = getDataRows_(sheet);
+  const data = [];
+
+  rows.forEach(function(r) {
+    const rowDate = normalizeDate_(r[1]);
+    if (rowDate !== date) return;
+
+    data.push({
+      id: String(r[0] || '').trim(),
+      date: rowDate,
+      class: String(r[2] || '').trim(),
+      nis: String(r[3] || '').trim(),
+      name: String(r[4] || '').trim(),
+      status: String(r[5] || 'Hadir').trim(),
+      time: normalizeTime_(r[6]),
+      timestamp: formatTimestamp_(r[7]),
+      type: String(r[8] || '').trim().toUpperCase(),
+      mode: String(r[9] || 'RFID').trim()
+    });
+  });
+
+  return output_({ status: 'success', data: data }, p.callback);
+}
+
+function handleScanAttendance_(p) {
+  const session = requireSession_(p.token);
+
+  let value = String(p.value || '').trim();
+  const mode = sanitizeText_(p.mode || 'RFID', 40) || 'RFID';
+  let requestedType = String(p.requestedType || 'AUTO').trim().toUpperCase();
+
+  if (mode.toUpperCase().indexOf('RFID') >= 0) {
+    value = normalizeRFID_(value);
+  } else {
+    value = value.slice(0, APP.MAX_SCAN_VALUE);
+  }
+
+  if (!value) {
+    return output_({
+      status: 'error',
+      message: 'Kode presensi kosong.'
+    }, p.callback);
+  }
+
+  const participant = findParticipant_(value);
+  if (!participant) {
+    return output_({
+      status: 'error',
+      message: 'Data peserta dengan kode tersebut tidak ditemukan.'
+    }, p.callback);
+  }
+
+  // Hanya Admin/Petugas/Pimpinan/Guru yang dapat melakukan scan.
+  // Viewer tidak digunakan untuk transaksi.
+  if (['Admin', 'Petugas', 'Pimpinan', 'Guru'].indexOf(session.role) === -1) {
+    return output_({
+      status: 'error',
+      message: 'Akun Anda tidak memiliki hak untuk melakukan presensi.'
+    }, p.callback);
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const result = processAttendanceTransaction_(
+      participant,
+      requestedType,
+      mode
+    );
+
+    return output_({
+      status: 'success',
+      student: participant,
+      attendance: result
+    }, p.callback);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function processAttendanceTransaction_(student, requestedType, mode) {
+  const sheet = getOrCreateSheet_(APP.SHEETS.ATTENDANCE, [
+    'ID', 'Tanggal', 'Kelas', 'NIS', 'Nama', 'Status',
+    'Waktu', 'Timestamp', 'Tipe', 'Mode'
+  ]);
+
+  const today = todayYMD_();
+  const now = new Date();
+  const time = Utilities.formatDate(now, APP.TIMEZONE, 'HH:mm:ss');
+
+  const rows = getDataRows_(sheet);
+  const todayRows = rows.filter(function(r) {
+    return normalizeDate_(r[1]) === today &&
+      String(r[3] || '').trim() === student.nis;
+  });
+
+  const hasMasuk = todayRows.some(function(r) {
+    return String(r[8] || '').trim().toUpperCase() === 'MASUK';
+  });
+
+  const hasPulang = todayRows.some(function(r) {
+    return String(r[8] || '').trim().toUpperCase() === 'PULANG';
+  });
+
+  // Manual status dari frontend: Izin / Sakit.
+  if (requestedType === 'IZIN' || requestedType === 'SAKIT') {
+    if (hasMasuk || hasPulang) {
+      throw new Error('Presensi sudah tercatat hari ini sehingga status ' + requestedType + ' tidak dapat menggantikannya.');
+    }
+
+    const attendance = appendAttendance_(
+      sheet, student, requestedType === 'IZIN' ? 'Izin' : 'Sakit',
+      time, 'STATUS', mode
+    );
+    return attendance;
+  }
+
+  // Dukungan eksplisit bila nanti frontend mengirim MASUK/PULANG.
+  let type = requestedType;
+  if (type !== 'MASUK' && type !== 'PULANG') {
+    type = !hasMasuk ? 'MASUK' : (!hasPulang ? 'PULANG' : '');
+  }
+
+  if (!type) {
+    throw new Error('Presensi masuk dan pulang untuk peserta ini sudah lengkap hari ini.');
+  }
+
+  if (type === 'MASUK' && hasMasuk) {
+    throw new Error('Presensi masuk sudah tercatat hari ini.');
+  }
+
+  if (type === 'PULANG' && !hasMasuk) {
+    throw new Error('Presensi masuk belum tercatat. Presensi pulang belum dapat diproses.');
+  }
+
+  if (type === 'PULANG' && hasPulang) {
+    throw new Error('Presensi pulang sudah tercatat hari ini.');
+  }
+
+  const status = type === 'MASUK' ? calculateEntryStatus_(now) : 'Hadir';
+  return appendAttendance_(sheet, student, status, time, type, mode);
+}
+
+function appendAttendance_(sheet, student, status, time, type, mode) {
+  const id = Utilities.getUuid();
+  const now = new Date();
+
+  sheet.appendRow([
+    id,
+    todayYMD_(),
+    student.class || '',
+    student.nis || '',
+    student.name || '',
+    status || 'Hadir',
+    time || '',
+    now,
+    type || '',
+    mode || 'RFID'
+  ]);
+
+  const lateMinutes = status === 'Terlambat'
+    ? calculateLateMinutes_(now)
+    : 0;
+
+  return {
+    id: id,
+    date: todayYMD_(),
+    class: student.class || '',
+    nis: student.nis || '',
+    name: student.name || '',
+    status: status || 'Hadir',
+    time: time || '',
+    type: type || '',
+    mode: mode || 'RFID',
+    lateMinutes: lateMinutes
+  };
+}
+
+/* =========================
+   STUDENT CRUD
+   ========================= */
+
+function handleSaveStudent_(data) {
+  const sheet = getOrCreateSheet_(APP.SHEETS.PARTICIPANTS, [
+    'NIS', 'Nama', 'Kelas', 'Jenis', 'RFID', 'Foto'
+  ]);
+
+  const nis = sanitizeText_(data.nis, 80);
+  const nama = sanitizeText_(data.nama, 200);
+  const kelas = sanitizeText_(data.kelas, 80);
+  const jenis = sanitizeText_(data.jenis || 'Siswa', 40);
+  const rfid = normalizeRFID_(data.rfid);
+  const foto = String(data.foto || '').trim().slice(0, 2000);
+
+  if (!nis || !nama) {
+    throw new Error('NIS dan Nama wajib diisi.');
+  }
+
+  const values = sheet.getDataRange().getValues();
+  let foundRow = -1;
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][0] || '').trim() === nis) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+
+  const row = [nis, nama, kelas, jenis, rfid, foto];
+
+  if (foundRow > 0) {
+    sheet.getRange(foundRow, 1, 1, row.length).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+  }
+
+  return jsonResponse_({
+    status: 'success',
+    action: 'saveStudent'
+  });
+}
+
+function handleDeleteStudent_(data) {
+  const sheet = getOrCreateSheet_(APP.SHEETS.PARTICIPANTS, [
+    'NIS', 'Nama', 'Kelas', 'Jenis', 'RFID', 'Foto'
+  ]);
+
+  const nis = sanitizeText_(data.nis, 80);
+  if (!nis) throw new Error('NIS tidak boleh kosong.');
+
+  const values = sheet.getDataRange().getValues();
+
+  for (let i = values.length - 1; i >= 1; i--) {
+    if (String(values[i][0] || '').trim() === nis) {
+      sheet.deleteRow(i + 1);
+    }
+  }
+
+  return jsonResponse_({
+    status: 'success',
+    action: 'deleteStudent'
+  });
+}
+
+/* =========================
+   USER MANAGEMENT
+   ========================= */
+
+function ensureUsersSheet_() {
+  const sheet = getOrCreateSheet_(APP.SHEETS.USERS, [
+    'Username', 'PasswordHash', 'Nama', 'Role', 'Aktif'
+  ]);
+
+  if (sheet.getLastRow() === 1) {
+    sheet.appendRow([
+      'admin',
+      hashPassword_('admin123'),
+      'Administrator Spensa',
+      'Admin',
+      'TRUE'
+    ]);
+  }
+
+  return sheet;
+}
+
+function findUser_(username) {
+  const sheet = ensureUsersSheet_();
+  const rows = getDataRows_(sheet);
+  const target = String(username || '').trim().toLowerCase();
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (String(r[0] || '').trim().toLowerCase() !== target) continue;
+
+    return {
+      username: String(r[0] || '').trim(),
+      passwordHash: String(r[1] || '').trim(),
+      name: String(r[2] || '').trim(),
+      role: normalizeRole_(r[3]),
+      active: isTruthy_(r[4])
+    };
+  }
+
+  return null;
+}
+
+function hashPassword_(password) {
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(password || ''),
+    Utilities.Charset.UTF_8
+  );
+
+  return bytes.map(function(b) {
+    const v = b < 0 ? b + 256 : b;
+    return ('0' + v.toString(16)).slice(-2);
+  }).join('');
+}
+
+function verifyPassword_(password, storedHash) {
+  const hash = String(storedHash || '').trim();
+  if (!hash) return false;
+
+  // Mendukung password lama plaintext jika masih ada,
+  // tetapi akun sebaiknya segera dipindahkan ke hash.
+  if (hash.length !== 64) {
+    return String(password || '') === hash;
+  }
+
+  return hashPassword_(password) === hash;
+}
+
+/* =========================
+   SETTINGS / HELPERS
+   ========================= */
+
+function calculateEntryStatus_(dateObj) {
+  const tolerance = getSetting_('jamToleransi', '07:15');
+  const nowMinutes = timeToMinutes_(Utilities.formatDate(dateObj, APP.TIMEZONE, 'HH:mm'));
+  const toleranceMinutes = timeToMinutes_(tolerance);
+
+  return nowMinutes > toleranceMinutes ? 'Terlambat' : 'Hadir';
+}
+
+function calculateLateMinutes_(dateObj) {
+  const tolerance = getSetting_('jamToleransi', '07:15');
+  const nowMinutes = timeToMinutes_(Utilities.formatDate(dateObj, APP.TIMEZONE, 'HH:mm'));
+  const toleranceMinutes = timeToMinutes_(tolerance);
+  return Math.max(0, nowMinutes - toleranceMinutes);
+}
+
+function getSetting_(key, fallback) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.SHEETS.SETTINGS);
+  if (!sheet) return fallback;
+
+  const rows = sheet.getDataRange().getValues();
+  const target = String(key || '').trim().toLowerCase();
+
+  for (let i = 0; i < rows.length; i++) {
+    const k = String(rows[i][0] || '').trim().toLowerCase();
+    if (k === target) return String(rows[i][1] || '').trim() || fallback;
+  }
+
+  return fallback;
+}
+
+function timeToMinutes_(value) {
+  const m = String(value || '').match(/^(\\d{1,2}):(\\d{2})/);
+  if (!m) return 0;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+function findParticipant_(value) {
+  const sheet = getOrCreateSheet_(APP.SHEETS.PARTICIPANTS, [
+    'NIS', 'Nama', 'Kelas', 'Jenis', 'RFID', 'Foto'
+  ]);
+
+  const rows = getDataRows_(sheet);
+  const target = String(value || '').trim();
+  const targetLower = target.toLowerCase();
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+
+    const nis = String(r[0] || '').trim();
+    const name = String(r[1] || '').trim();
+    const rfid = normalizeRFID_(r[4]);
+    const id = nis || rfid || String(i + 1);
+
+    if (
+      (rfid && rfid === target) ||
+      (nis && nis === target) ||
+      (id && id === target) ||
+      (name && name.toLowerCase() === targetLower)
+    ) {
+      return {
+        id: id,
+        nis: nis,
+        name: name,
+        class: String(r[2] || '').trim(),
+        role: roleFromJenis_(r[3]),
+        rfid: rfid,
+        photo: String(r[5] || '').trim().slice(0, 2000)
+      };
+    }
+  }
+
+  return null;
+}
+
+function roleFromJenis_(value) {
+  const v = String(value || '').trim().toLowerCase();
+  if (v.indexOf('admin') >= 0) return 'Admin';
+  if (v.indexOf('petugas') >= 0 || v.indexOf('scanner') >= 0) return 'Petugas';
+  if (v.indexOf('pimpinan') >= 0 || v.indexOf('kepala') >= 0) return 'Pimpinan';
+  if (v.indexOf('guru') >= 0 || v.indexOf('staf') >= 0) return 'Guru';
+  return 'Siswa';
+}
+
+function normalizeRole_(value) {
+  const v = String(value || '').trim().toLowerCase();
+  if (v === 'admin') return 'Admin';
+  if (v === 'petugas' || v === 'scanner') return 'Petugas';
+  if (v === 'guru') return 'Guru';
+  if (v === 'pimpinan' || v === 'leader' || v === 'kepala sekolah') return 'Pimpinan';
+  return 'Viewer';
+}
+
+function normalizeRFID_(value) {
+  return String(value || '')
+    .replace(/[^0-9A-Za-z_-]/g, '')
+    .slice(0, APP.MAX_RFID);
+}
+
+function sanitizeText_(value, maxLength) {
+  return String(value || '')
+    .replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '')
+    .trim()
+    .slice(0, maxLength || 500);
+}
+
+function isTruthy_(value) {
+  const v = String(value == null ? '' : value).trim().toLowerCase();
+  return v === 'true' || v === '1' || v === 'ya' || v === 'aktif' || v === 'yes';
+}
+
+function todayYMD_() {
+  return Utilities.formatDate(new Date(), APP.TIMEZONE, 'yyyy-MM-dd');
+}
+
+function normalizeDate_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, APP.TIMEZONE, 'yyyy-MM-dd');
+  }
+
+  const s = String(value || '').trim();
+  if (!s) return '';
+
+  const iso = s.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);
+  if (iso) {
+    return iso[1] + '-' +
+      ('0' + iso[2]).slice(-2) + '-' +
+      ('0' + iso[3]).slice(-2);
+  }
+
+  const dmy = s.match(/^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})/);
+  if (dmy) {
+    return dmy[3] + '-' +
+      ('0' + dmy[2]).slice(-2) + '-' +
+      ('0' + dmy[1]).slice(-2);
+  }
+
+  return s.slice(0, 10);
+}
+
+function normalizeTime_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, APP.TIMEZONE, 'HH:mm:ss');
+  }
+
+  return String(value || '').trim().slice(0, 12);
+}
+
+function formatTimestamp_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, APP.TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
+  }
+  return String(value || '').trim().slice(0, 30);
+}
+
+function getOrCreateSheet_(name, headers) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+  }
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  }
+
+  return sheet;
+}
+
+function getDataRows_(sheet) {
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+}
+
+function parsePost_(e) {
+  if (!e || !e.postData) return {};
+
+  const raw = String(e.postData.contents || '').trim();
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    const out = {};
+    raw.split('&').forEach(function(pair) {
+      const parts = pair.split('=');
+      const key = decodeURIComponent(parts.shift() || '');
+      const value = decodeURIComponent(parts.join('=') || '');
+      if (key) out[key] = value;
+    });
+    return out;
+  }
+}
+
+function output_(obj, callback) {
+  const cb = String(callback || '').trim();
+
+  if (cb && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(cb)) {
+    return ContentService
+      .createTextOutput(cb + '(' + JSON.stringify(obj) + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
-}`
+}
+
+function jsonResponse_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function safeError_(err) {
+  if (err && err.authCode) return String(err.message || 'Session tidak valid.');
+  return String(err && err.message ? err.message : err).slice(0, 500);
+}
+`
 
       document.getElementById('gasCodeTextArea').value = scriptCode;
       document.getElementById('gasCodeModal').classList.remove('hidden');
@@ -2763,7 +3557,7 @@ function jsonResponse(obj) {
         }));
 
         localStorage.setItem('spensa_students', JSON.stringify(lightweightStudents));
-        localStorage.setItem('spensa_logs', JSON.stringify(attendanceLogs));
+        // Jangan simpan attendanceLogs ke localStorage; Google Sheet adalah sumber utama.
         localStorage.setItem('spensa_time', JSON.stringify(timeSettings));
       } catch (err) {
         console.warn('Cache browser dilewati:', err);
