@@ -1242,7 +1242,7 @@ const result = await response.json();
       };
       const separator = url.includes('?') ? '&' : '?';
       script.src = url + separator + authQuery('action=validateSession') + '&callback=' + encodeURIComponent(callbackName) + '&_ts=' + Date.now();
-      script.onerror = () => finish(false);
+      script.onerror = () => console.warn('Validasi session JSONP gagal, menunggu timeout.');
       document.head.appendChild(script);
     }
 
