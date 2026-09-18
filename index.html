@@ -1189,12 +1189,12 @@
       setLoginBusy(true);
 
       try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'login', username, password })
-        });
-        const result = await response.json();
+        const loginUrl = url + '?action=login&username=' +
+  encodeURIComponent(username) + '&password=' +
+  encodeURIComponent(password);
+
+const response = await fetch(loginUrl);
+const result = await response.json();
         if (!result || result.status !== 'success' || !result.token) {
           throw new Error(result?.message || 'Username atau password salah.');
         }
