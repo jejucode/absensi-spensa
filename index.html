@@ -2014,11 +2014,10 @@ const result = await response.json();
     }
 
     function startAttendancePolling() {
-      if (attendancePollTimer) clearInterval(attendancePollTimer);
-      if (attendanceSyncRetryTimer) clearTimeout(attendanceSyncRetryTimer);
+  if (attendancePollTimer) clearInterval(attendancePollTimer);
+  if (attendanceSyncRetryTimer) clearTimeout(attendanceSyncRetryTimer);
 
-      // Sinkronisasi awal.
-      setTimeout(() => loadAttendanceFromGoogleSheets(false), 500);
+  attendancePollTimer = setInterval(() => {
 
       // Sinkronisasi berkala. Request tidak akan bertumpuk.
       attendancePollTimer = setInterval(() => {
