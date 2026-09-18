@@ -1223,12 +1223,12 @@ const result = await response.json();
         try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
       };
       const finish = (ok) => {
-        if (done) return;
-        done = true;
-        clearTimeout(timeout);
-        cleanup();
-        callback(ok);
-      };
+  if (done) return;
+  done = true;
+  clearTimeout(timeout);
+  callback(ok);
+  setTimeout(cleanup, 100);
+};
       const timeout = setTimeout(() => finish(false), 10000);
       window[callbackName] = function(result) {
         if (result?.status === 'success' && result.user) {
