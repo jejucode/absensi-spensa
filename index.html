@@ -1227,7 +1227,7 @@ const result = await response.json();
   done = true;
   clearTimeout(timeout);
   callback(ok);
-  setTimeout(cleanup, 100);
+  setTimeout(cleanup, 5000);
 };
       const timeout = setTimeout(() => finish(false), 10000);
       window[callbackName] = function(result) {
