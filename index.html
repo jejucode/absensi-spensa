@@ -1974,7 +1974,7 @@ const result = await response.json();
           return String(b.timeIn || '').localeCompare(String(a.timeIn || ''));
         });
         attendanceServerLastSuccess = Date.now();
-        attendanceSyncInFlight = false;
+        finish();
 
         // Google Sheet tetap menjadi sumber utama; jangan menulis log ke localStorage.
         renderDashboard();
