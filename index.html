@@ -1414,11 +1414,11 @@
     }
 
     function loadGASUrl() {
-      const currentUrl = 'https://script.google.com/macros/s/AKfycbzjNABcdkDHw1pivH6NnwD7Df4ywdwFXTxIJxrLr1k3CpL_7t3HE3rCvQsWOFevht1zdQ/exec';
+      const defaultUrl = 'https://script.google.com/macros/s/AKfycbzjNABcdkDHw1pivH6NnwD7Df4ywdwFXTxIJxrLr1k3CpL_7t3HE3rCvQsWOFevht1zdQ/exec';
+      const savedUrl = localStorage.getItem('spensa_gas_url') || defaultUrl;
       const input = document.getElementById('gasScriptUrl');
-      if (input) input.value = currentUrl;
-      localStorage.setItem('spensa_gas_url', currentUrl);
-      return currentUrl;
+      if (input) input.value = savedUrl;
+      return savedUrl;
     }
 
     function loadStudentsFromGoogleSheets() {
