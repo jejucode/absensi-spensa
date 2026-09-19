@@ -1759,15 +1759,120 @@
       });
     }
 
+    function filterManualStudents() {
+      const input = document.getElementById('manualStudentSearch');
+      const results = document.getElementById('manualStudentResults');
+      if (!input || !results) return;
+
+      const query = String(input.value || '').trim().toLowerCase();
+
+      if (!Array.isArray(studentData) || studentData.length === 0) {
+        results.innerHTML = '<div class="px-4 py-3 text-xs text-slate-400">Data siswa belum tersedia.</div>';
+        results.classList.remove('hidden');
+        return;
+      }
+
+      let matches = studentData.filter(s => {
+        const haystack = [
+          s.name || '',
+          s.nis || '',
+          s.rfid || '',
+          s.class || ''
+        ].join(' ').toLowerCase();
+        return !query || haystack.includes(query);
+      }).slice(0, 30);
+
+      if (matches.length === 0) {
+        results.innerHTML = '<div class="px-4 py-3 text-xs text-slate-400">Siswa tidak ditemukan.</div>';
+      } else {
+        results.innerHTML = matches.map(s => `
+          <button type="button"
+            class="w-full text-left px-4 py-2.5 hover:bg-blue-50 border-b border-slate-100 last:border-b-0 transition"
+            onclick="selectManualStudent('${escapeHtmlAttr(s.id)}')">
+            <div class="text-xs font-extrabold text-slate-800">${escapeHtml(s.name || 'Tanpa Nama')}</div>
+            <div class="text-[10px] text-slate-500 mt-0.5">NIS: ${escapeHtml(s.nis || '-')} • Kelas ${escapeHtml(s.class || '-')}</div>
+          </button>
+        `).join('');
+      }
+
+      results.classList.remove('hidden');
+    }
+
+    function selectManualStudent(studentId) {
+      const student = studentData.find(s => String(s.id) === String(studentId));
+      if (!student) return;
+
+      const search = document.getElementById('manualStudentSearch');
+      const hidden = document.getElementById('manualInputID');
+      const results = document.getElementById('manualStudentResults');
+      const selected = document.getElementById('manualStudentSelected');
+      const clear = document.getElementById('manualStudentClear');
+
+      const identity = String(student.nis || student.id || student.rfid || '').trim();
+      if (!identity) {
+        showToast('Siswa tidak memiliki NIS/ID yang dapat digunakan.', 'error');
+        return;
+      }
+
+      search.value = `${student.name} • ${student.class || '-'}`;
+      hidden.value = identity;
+      results.classList.add('hidden');
+      selected.classList.remove('hidden');
+      selected.querySelector('span').textContent = `Terpilih: ${student.name} • Kelas ${student.class || '-'}`;
+      clear.classList.remove('hidden');
+    }
+
+    function clearManualStudent() {
+      const search = document.getElementById('manualStudentSearch');
+      const hidden = document.getElementById('manualInputID');
+      const results = document.getElementById('manualStudentResults');
+      const selected = document.getElementById('manualStudentSelected');
+      const clear = document.getElementById('manualStudentClear');
+
+      if (search) search.value = '';
+      if (hidden) hidden.value = '';
+      if (results) results.classList.add('hidden');
+      if (selected) selected.classList.add('hidden');
+      if (clear) clear.classList.add('hidden');
+      search?.focus();
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function escapeHtmlAttr(value) {
+      return escapeHtml(value).replace(/`/g, '&#096;');
+    }
+
     function handleManualSubmit(e) {
       e.preventDefault();
-      const code = document.getElementById('manualInputID').value.trim();
-      const statusOverride = document.getElementById('manualInputStatus').value;
-      if (code) {
-        processScannedCode(code, 'Input Manual', statusOverride);
-        document.getElementById('manualInputID').value = '';
+
+      const code = document.getElementById('manualInputID')?.value.trim() || '';
+      const statusOverride = document.getElementById('manualInputStatus')?.value || 'AUTO';
+
+      if (!code) {
+        showToast('Silakan pilih nama siswa terlebih dahulu.', 'error');
+        document.getElementById('manualStudentSearch')?.focus();
+        filterManualStudents();
+        return;
       }
+
+      processScannedCode(code, 'Input Manual', statusOverride);
+      clearManualStudent();
     }
+
+    document.addEventListener('click', function(e) {
+      const box = document.getElementById('manualStudentResults');
+      const search = document.getElementById('manualStudentSearch');
+      const wrapper = search?.closest('.relative')?.parentElement;
+      if (box && wrapper && !wrapper.contains(e.target)) box.classList.add('hidden');
+    });
 
     function processScannedCode(scannedValue, modeText, statusOverride = 'AUTO') {
       // Normalisasi kode scanner. Jangan pernah meneruskan payload besar ke server.
