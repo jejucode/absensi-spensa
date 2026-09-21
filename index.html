@@ -977,7 +977,7 @@
     <section id="tab-mycard" class="tab-content space-y-6 hidden">
       <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
         <h2 class="text-2xl font-black text-slate-800">Kartu Presensi Digital Saya</h2>
-        <p class="text-xs text-slate-500 mt-1">Tunjukkan Kode QR atau Kartu ID ini ke Petugas Scanner Absensi Spensa</p>
+        <p class="text-xs text-slate-500 mt-1">Tunjukkan Kode QR atau Kartu ID ini ke Petugas Absen Absensi Spensa</p>
 
         <div id="studentPersonalCardArea" class="mt-6 flex justify-center">
           <!-- Rendered Card for logged student -->
@@ -1017,7 +1017,7 @@
             <i class="fa-solid fa-qrcode"></i>
           </div>
           <div>
-            <h4 class="font-extrabold text-slate-800 text-sm">Petugas Pemindai / Scanner</h4>
+            <h4 class="font-extrabold text-slate-800 text-sm">Petugas Absen</h4>
             <p class="text-xs text-slate-500">Mode Khusus Scan QR & RFID di Gerbang Sekolah</p>
           </div>
         </div>
@@ -1304,7 +1304,7 @@
       const role = String(authUser?.role || '').trim();
       const roleMap = {
         Admin: 'admin',
-        Petugas: 'scanner',
+        'Petugas Absen': 'scanner',
         Guru: 'teacher',
         Pimpinan: 'leader',
         User: 'user'
@@ -1604,7 +1604,7 @@
         document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
         document.getElementById('nav-mycard').classList.add('hidden');
       } else if (role === 'scanner') {
-        label.innerText = 'Petugas Scanner';
+        label.innerText = 'Petugas Absen';
         mobileLabel.innerText = 'Scanner';
         document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
         document.getElementById('nav-mycard').classList.add('hidden');
@@ -3213,9 +3213,9 @@ function handleScanAttendance_(p) {
     }, p.callback);
   }
 
-  // Hanya Admin/Petugas/Pimpinan/Guru yang dapat melakukan scan.
+  // Hanya Admin/Petugas Absen/Pimpinan/Guru yang dapat melakukan scan.
   // Viewer tidak digunakan untuk transaksi.
-  if (['Admin', 'Petugas', 'Pimpinan', 'Guru'].indexOf(session.role) === -1) {
+  if (['Admin', 'Petugas Absen', 'Pimpinan', 'Guru'].indexOf(session.role) === -1) {
     return output_({
       status: 'error',
       message: 'Akun Anda tidak memiliki hak untuk melakukan presensi.'
@@ -3571,7 +3571,7 @@ function findParticipant_(value) {
 function roleFromJenis_(value) {
   const v = String(value || '').trim().toLowerCase();
   if (v.indexOf('admin') >= 0) return 'Admin';
-  if (v.indexOf('petugas') >= 0 || v.indexOf('scanner') >= 0) return 'Petugas';
+  if (v.indexOf('petugas absen') >= 0 || v === 'scanner' || v.indexOf('scanner') >= 0) return 'Petugas Absen';
   if (v.indexOf('pimpinan') >= 0 || v.indexOf('kepala') >= 0) return 'Pimpinan';
   if (v.indexOf('guru') >= 0 || v.indexOf('staf') >= 0) return 'Guru';
   return 'Siswa';
@@ -3580,7 +3580,7 @@ function roleFromJenis_(value) {
 function normalizeRole_(value) {
   const v = String(value || '').trim().toLowerCase();
   if (v === 'admin') return 'Admin';
-  if (v === 'petugas' || v === 'scanner') return 'Petugas';
+  if (v === 'petugas absen' || v === 'petugas' || v === 'scanner') return 'Petugas Absen';
   if (v === 'guru') return 'Guru';
   if (v === 'pimpinan' || v === 'leader' || v === 'kepala sekolah') return 'Pimpinan';
   return 'Viewer';
