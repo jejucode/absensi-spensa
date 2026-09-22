@@ -500,7 +500,7 @@
                 <label class="block text-xs font-bold text-slate-700 mb-1">Cari Nama Siswa</label>
                 <div class="relative">
                   <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400 text-xs"></i>
-                  <input type="text" id="manualStudentSearch" autocomplete="off" required placeholder="Ketik nama siswa..." oninput="handleManualStudentInput()" onclick="filterManualStudents()" class="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                  <input type="text" id="manualStudentSearch" autocomplete="off" required placeholder="Ketik nama peserta..." oninput="handleManualStudentInput()" onclick="filterManualStudents()" class="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
                   <button type="button" id="manualStudentClear" onclick="clearManualStudent()" class="hidden absolute right-2.5 top-2.5 w-6 h-6 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100" title="Hapus pilihan">
                     <i class="fa-solid fa-xmark text-xs"></i>
                   </button>
@@ -513,15 +513,18 @@
               </div>
 
               <div>
-                <label class="block text-xs font-bold text-slate-700 mb-1">Pilih Status Presensi Manual</label>
-                <select id="manualInputStatus" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                  <option value="AUTO">Otomatis (Masuk / Pulang sesuai kondisi)</option>
-                  <option value="HADIR">Hadir (paksa Jam Masuk)</option>
-                  <option value="TERLAMBAT">Terlambat (paksa Jam Masuk)</option>
-                  <option value="IZIN">Izin</option>
-                  <option value="SAKIT">Sakit</option>
-                  <option value="ALPA">Alpa / Tanpa Keterangan</option>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Keterangan Presensi</label>
+                <select id="manualInputStatus" onchange="updateManualStatusHint()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                  <option value="AUTO">Otomatis — Masuk / Pulang sesuai kondisi</option>
+                  <option value="HADIR">Hadir — Jam Masuk</option>
+                  <option value="TERLAMBAT">Terlambat — Jam Masuk</option>
+                  <option value="IZIN">Izin — Keterangan Resmi</option>
+                  <option value="SAKIT">Sakit — Keterangan Resmi</option>
+                  <option value="ALPA">Alpa — Tanpa Keterangan</option>
                 </select>
+                <p id="manualStatusHint" class="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+                  Otomatis: sistem menentukan Masuk atau Pulang berdasarkan presensi hari ini.
+                </p>
               </div>
 
               <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center space-x-2">
@@ -974,7 +977,7 @@
     <section id="tab-mycard" class="tab-content space-y-6 hidden">
       <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
         <h2 class="text-2xl font-black text-slate-800">Kartu Presensi Digital Saya</h2>
-        <p class="text-xs text-slate-500 mt-1">Tunjukkan Kode QR atau Kartu ID ini ke Petugas Scanner Absensi Spensa</p>
+        <p class="text-xs text-slate-500 mt-1">Tunjukkan Kode QR atau Kartu ID ini ke Petugas Absen Spensa</p>
 
         <div id="studentPersonalCardArea" class="mt-6 flex justify-center">
           <!-- Rendered Card for logged student -->
@@ -1014,7 +1017,7 @@
             <i class="fa-solid fa-qrcode"></i>
           </div>
           <div>
-            <h4 class="font-extrabold text-slate-800 text-sm">Petugas Pemindai / Scanner</h4>
+            <h4 class="font-extrabold text-slate-800 text-sm">Petugas Absen</h4>
             <p class="text-xs text-slate-500">Mode Khusus Scan QR & RFID di Gerbang Sekolah</p>
           </div>
         </div>
@@ -1299,8 +1302,14 @@
 
     function applyAuthenticatedUser() {
       const role = String(authUser?.role || '').trim();
-      const roleMap = { Admin: 'admin', Petugas: 'scanner', Guru: 'teacher', Pimpinan: 'leader' };
-      currentRole = roleMap[role] || 'viewer';
+      const roleMap = {
+        Admin: 'admin',
+        'Petugas Absen': 'scanner',
+        Guru: 'teacher',
+        Pimpinan: 'leader',
+        User: 'user'
+      };
+      currentRole = roleMap[role] || 'user';
       const label = document.getElementById('roleLabel');
       const mobileLabel = document.getElementById('mobileRoleLabel');
       const displayName = authUser?.nama || authUser?.username || 'Pengguna';
@@ -1308,6 +1317,12 @@
       if (mobileLabel) mobileLabel.innerText = role || 'User';
       document.querySelectorAll('.admin-only').forEach(el => {
         el.classList.toggle('hidden', role !== 'Admin');
+      });
+
+      // Role User adalah akun aplikasi biasa: dapat melihat dashboard,
+      // scanner, kartu, dan rekap; tidak dapat mengelola data/setting.
+      document.querySelectorAll('.user-only').forEach(el => {
+        el.classList.toggle('hidden', role !== 'User');
       });
       // Role switching dari UI lama tidak lagi menjadi sumber otorisasi.
       const roleBadge = document.getElementById('roleBadgeContainer');
@@ -1589,7 +1604,7 @@
         document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
         document.getElementById('nav-mycard').classList.add('hidden');
       } else if (role === 'scanner') {
-        label.innerText = 'Petugas Scanner';
+        label.innerText = 'Petugas Absen';
         mobileLabel.innerText = 'Scanner';
         document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
         document.getElementById('nav-mycard').classList.add('hidden');
@@ -1868,6 +1883,22 @@
         .replace(/'/g, '&#039;');
     }
 
+    function updateManualStatusHint() {
+      const value = document.getElementById('manualInputStatus')?.value || 'AUTO';
+      const hint = document.getElementById('manualStatusHint');
+      if (!hint) return;
+
+      const messages = {
+        AUTO: 'Otomatis: sistem menentukan Masuk atau Pulang berdasarkan presensi hari ini.',
+        HADIR: 'Hadir: dicatat sebagai Jam Masuk dengan status Hadir.',
+        TERLAMBAT: 'Terlambat: dicatat sebagai Jam Masuk dengan status Terlambat.',
+        IZIN: 'Izin: dicatat sebagai status ketidakhadiran resmi, tanpa Jam Masuk/Pulang.',
+        SAKIT: 'Sakit: dicatat sebagai status ketidakhadiran resmi, tanpa Jam Masuk/Pulang.',
+        ALPA: 'Alpa: dicatat sebagai tanpa keterangan, tanpa Jam Masuk/Pulang.'
+      };
+      hint.textContent = messages[value] || messages.AUTO;
+    }
+
     function handleManualSubmit(e) {
       e.preventDefault();
 
@@ -1884,6 +1915,8 @@
       processScannedCode(code, 'Input Manual', statusOverride);
       clearManualStudent();
     }
+
+    updateManualStatusHint();
 
     document.addEventListener('click', function(e) {
       const box = document.getElementById('manualStudentResults');
@@ -2154,25 +2187,55 @@
               timeOut: '-',
               status: row.status || 'Hadir',
               lateMinutes: 0,
+              modeIn: '',
+              modeOut: '',
+              modeStatus: '',
               mode: row.mode || 'RFID'
             };
             grouped.set(key, log);
           }
 
+          const rowMode = String(row.mode || 'RFID').trim() || 'RFID';
+
           if (type === 'MASUK') {
             log.timeIn = row.time || log.timeIn;
             log.status = row.status || log.status;
+            log.attendanceType = 'MASUK';
+            log.modeIn = rowMode;
             const m = String(row.status || '').match(/(\d+)/);
             log.lateMinutes = m ? Number(m[1]) : (log.lateMinutes || 0);
           } else if (type === 'PULANG') {
             log.timeOut = row.time || log.timeOut;
+            log.modeOut = rowMode;
+            log.attendanceType = log.attendanceType || 'PULANG';
           } else if (type === 'STATUS') {
-            log.timeIn = '-';
-            log.timeOut = '-';
-            log.status = row.status || log.status;
-            log.lateMinutes = 0;
+            // Status Izin/Sakit/Alpa hanya menjadi status harian jika
+            // peserta belum memiliki transaksi Jam Masuk.
+            if (!log.attendanceType || log.attendanceType === 'STATUS') {
+              log.timeIn = '-';
+              log.timeOut = '-';
+              log.status = row.status || log.status;
+              log.lateMinutes = 0;
+              log.attendanceType = 'STATUS';
+              log.modeStatus = rowMode;
+            }
           }
-          log.mode = row.mode || log.mode;
+
+          // Jangan menimpa metode Jam Masuk dengan metode Jam Pulang.
+          // Jika keduanya berbeda, tampilkan keduanya secara eksplisit.
+          if (log.modeIn && log.modeOut) {
+            log.mode = log.modeIn === log.modeOut
+              ? log.modeIn
+              : `${log.modeIn} + ${log.modeOut}`;
+          } else if (log.modeIn) {
+            log.mode = log.modeIn;
+          } else if (log.modeOut) {
+            log.mode = log.modeOut;
+          } else if (log.modeStatus) {
+            log.mode = log.modeStatus;
+          } else {
+            log.mode = log.mode || rowMode;
+          }
         });
 
         attendanceLogs = Array.from(grouped.values()).sort((a, b) => {
@@ -2579,11 +2642,7 @@ function formatAttendanceDate(value) {
 
     const matchStatus =
       statusFilter === 'ALL' ||
-      logStatus === statusFilter ||
-      (
-        statusFilter === 'Izin' &&
-        (logStatus === 'Izin' || logStatus === 'Sakit')
-      );
+      logStatus === statusFilter;
 
     const searchableText = (
       studentName + ' ' +
@@ -2643,7 +2702,13 @@ function formatAttendanceDate(value) {
         ? 'bg-emerald-100 text-emerald-700'
         : status === 'Terlambat'
           ? 'bg-amber-100 text-amber-700'
-          : 'bg-rose-100 text-rose-700';
+          : status === 'Izin'
+            ? 'bg-blue-100 text-blue-700'
+            : status === 'Sakit'
+              ? 'bg-violet-100 text-violet-700'
+              : status === 'Alpa'
+                ? 'bg-rose-100 text-rose-700'
+                : 'bg-slate-100 text-slate-700';
 
     return `
       <tr class="hover:bg-slate-50 transition">
@@ -2713,15 +2778,29 @@ function formatAttendanceDate(value) {
       document.getElementById('dashHadirCount').innerText = todayLogs.filter(l => l.status === 'Hadir').length;
       document.getElementById('dashTerlambatCount').innerText = todayLogs.filter(l => l.status === 'Terlambat').length;
       document.getElementById('dashIzinSakitCount').innerText = todayLogs.filter(l => l.status === 'Izin' || l.status === 'Sakit').length;
-      const eligibleStudents = studentData.filter(s => String(s.role || 'Siswa').toLowerCase() === 'siswa');
-      const attendedStudentIds = new Set(
-        todayLogs
-          .filter(l => ['Hadir', 'Terlambat'].includes(String(l.status || '')))
-          .map(l => String(l.studentId || l.nis || '').trim())
-          .filter(Boolean)
-      );
+      // Semua peserta Guru + Siswa wajib dihitung dalam presensi.
+      // Jangan membatasi perhitungan hanya pada role Siswa.
+      const eligibleParticipants = studentData.filter(s => {
+        const role = String(s.role || '').trim().toLowerCase();
+        return role === 'siswa' || role === 'guru';
+      });
+
+
+      const totalEligible = eligibleParticipants.length;
+      const attendedEligible = new Set();
+      todayLogs.forEach(l => {
+        const s = studentData.find(st =>
+          String(st.id || '').trim() === String(l.studentId || '').trim() ||
+          (l.nis && String(st.nis || '').trim() === String(l.nis || '').trim())
+        );
+        if (s && ['siswa', 'guru'].includes(String(s.role || '').trim().toLowerCase()) &&
+            ['Hadir', 'Terlambat'].includes(String(l.status || ''))) {
+          attendedEligible.add(String(s.nis || s.id || '').trim());
+        }
+      });
+
       document.getElementById('dashAlpaCount').innerText =
-        Math.max(0, eligibleStudents.length - attendedStudentIds.size);
+        Math.max(0, totalEligible - attendedEligible.size);
 
       // Live Feed Dashboard
       const feedContainer = document.getElementById('dashboardLiveFeed');
@@ -3171,9 +3250,9 @@ function handleScanAttendance_(p) {
     }, p.callback);
   }
 
-  // Hanya Admin/Petugas/Pimpinan/Guru yang dapat melakukan scan.
+  // Hanya Admin/Petugas Absen/Pimpinan/Guru yang dapat melakukan scan.
   // Viewer tidak digunakan untuk transaksi.
-  if (['Admin', 'Petugas', 'Pimpinan', 'Guru'].indexOf(session.role) === -1) {
+  if (['Admin', 'Petugas Absen', 'Pimpinan', 'Guru'].indexOf(session.role) === -1) {
     return output_({
       status: 'error',
       message: 'Akun Anda tidak memiliki hak untuk melakukan presensi.'
@@ -3529,7 +3608,7 @@ function findParticipant_(value) {
 function roleFromJenis_(value) {
   const v = String(value || '').trim().toLowerCase();
   if (v.indexOf('admin') >= 0) return 'Admin';
-  if (v.indexOf('petugas') >= 0 || v.indexOf('scanner') >= 0) return 'Petugas';
+  if (v.indexOf('petugas absen') >= 0 || v === 'scanner' || v.indexOf('scanner') >= 0) return 'Petugas Absen';
   if (v.indexOf('pimpinan') >= 0 || v.indexOf('kepala') >= 0) return 'Pimpinan';
   if (v.indexOf('guru') >= 0 || v.indexOf('staf') >= 0) return 'Guru';
   return 'Siswa';
@@ -3538,7 +3617,7 @@ function roleFromJenis_(value) {
 function normalizeRole_(value) {
   const v = String(value || '').trim().toLowerCase();
   if (v === 'admin') return 'Admin';
-  if (v === 'petugas' || v === 'scanner') return 'Petugas';
+  if (v === 'petugas absen' || v === 'petugas' || v === 'scanner') return 'Petugas Absen';
   if (v === 'guru') return 'Guru';
   if (v === 'pimpinan' || v === 'leader' || v === 'kepala sekolah') return 'Pimpinan';
   return 'Viewer';
