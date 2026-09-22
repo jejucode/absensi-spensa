@@ -1014,8 +1014,8 @@
             <i class="fa-solid fa-qrcode"></i>
           </div>
           <div>
-            <h4 class="font-extrabold text-slate-800 text-sm">Petugas Pemindai / Scanner</h4>
-            <p class="text-xs text-slate-500">Mode Khusus Scan QR & RFID di Gerbang Sekolah</p>
+            <h4 class="font-extrabold text-slate-800 text-sm">Petugas Absen</h4>
+            <p class="text-xs text-slate-500">Akses khusus untuk proses presensi QR, RFID, dan input manual</p>
           </div>
         </div>
 
@@ -1024,8 +1024,8 @@
             <i class="fa-solid fa-user-graduate"></i>
           </div>
           <div>
-            <h4 class="font-extrabold text-slate-800 text-sm">Siswa / User Perorangan</h4>
-            <p class="text-xs text-slate-500">Lihat Kartu Presensi Digital & Riwayat Absensi Pribadi</p>
+            <h4 class="font-extrabold text-slate-800 text-sm">User</h4>
+            <p class="text-xs text-slate-500">Akses terbatas sesuai hak pengguna</p>
           </div>
         </div>
 
@@ -1299,24 +1299,41 @@
 
     function applyAuthenticatedUser() {
       const role = String(authUser?.role || '').trim();
-      const roleMap = { Admin: 'admin', Petugas: 'scanner', Guru: 'teacher', Pimpinan: 'leader' };
-      currentRole = roleMap[role] || 'viewer';
+      const roleMap = { Admin: 'admin', 'Petugas Absen': 'operator', Guru: 'teacher', Pimpinan: 'leader', User: 'user' };
+      currentRole = roleMap[role] || 'user';
       const label = document.getElementById('roleLabel');
       const mobileLabel = document.getElementById('mobileRoleLabel');
       const displayName = authUser?.nama || authUser?.username || 'Pengguna';
-      if (label) label.innerText = displayName + ' • ' + (role || 'Pengguna');
+      if (label) label.innerText = displayName + ' • ' + (role || 'User');
       if (mobileLabel) mobileLabel.innerText = role || 'User';
-      document.querySelectorAll('.admin-only').forEach(el => {
-        el.classList.toggle('hidden', role !== 'Admin');
+
+      const permissions = {
+        'Admin':      ['dashboard','scan','idcards','students','attendance','settings'],
+        'Petugas Absen':['dashboard','scan','attendance'],
+        'Guru':       ['dashboard','attendance'],
+        'Pimpinan':   ['dashboard','attendance'],
+        'User':       ['dashboard','attendance']
+      };
+      const allowed = permissions[role] || permissions.User;
+      ['dashboard','scan','idcards','students','attendance','settings'].forEach(tab => {
+        const nav = document.getElementById('nav-' + tab);
+        if (nav) nav.classList.toggle('hidden', allowed.indexOf(tab) === -1);
       });
+      document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', role !== 'Admin'));
+      document.querySelectorAll('.operator-only').forEach(el => el.classList.toggle('hidden', !['Admin','Petugas Absen'].includes(role)));
+
       // Role switching dari UI lama tidak lagi menjadi sumber otorisasi.
       const roleBadge = document.getElementById('roleBadgeContainer');
       if (roleBadge) {
         roleBadge.removeAttribute('onclick');
         roleBadge.classList.remove('cursor-pointer');
       }
-      const mobileRoleButton = document.querySelector('.flex.md\\:hidden button[onclick="openRoleModal()"]');
+      const mobileRoleButton = document.querySelector('.flex.md\:hidden button[onclick="openRoleModal()"]');
       if (mobileRoleButton) mobileRoleButton.removeAttribute('onclick');
+
+      const firstAllowed = allowed[0] || 'dashboard';
+      const activeTabAllowed = allowed.indexOf(currentTab) >= 0;
+      if (!activeTabAllowed) switchTab(firstAllowed);
     }
 
     function logoutSpensa() {
@@ -1543,6 +1560,19 @@
     }
 
     function switchTab(tabId) {
+      const role = String(authUser?.role || '').trim();
+      const permissions = {
+        'Admin': ['dashboard','scan','idcards','students','attendance','settings'],
+        'Petugas Absen': ['dashboard','scan','attendance'],
+        'Guru': ['dashboard','attendance'],
+        'Pimpinan': ['dashboard','attendance'],
+        'User': ['dashboard','attendance']
+      };
+      const allowed = permissions[role] || permissions.User;
+      if (authUser && allowed.indexOf(tabId) === -1) {
+        showToast('Anda tidak memiliki akses ke menu tersebut.', 'error');
+        tabId = allowed[0] || 'dashboard';
+      }
       currentTab = tabId;
 
       // Toggle tab contents
@@ -1577,33 +1607,9 @@
     }
 
     function selectRole(role) {
-      currentRole = role;
+      // Dipertahankan hanya untuk kompatibilitas UI lama; role sebenarnya berasal dari login server.
       closeRoleModal();
-
-      const label = document.getElementById('roleLabel');
-      const mobileLabel = document.getElementById('mobileRoleLabel');
-
-      if (role === 'admin') {
-        label.innerText = 'Admin Spensa';
-        mobileLabel.innerText = 'Admin';
-        document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-        document.getElementById('nav-mycard').classList.add('hidden');
-      } else if (role === 'scanner') {
-        label.innerText = 'Petugas Scanner';
-        mobileLabel.innerText = 'Scanner';
-        document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
-        document.getElementById('nav-mycard').classList.add('hidden');
-        switchTab('scan');
-      } else {
-        label.innerText = 'User Siswa';
-        mobileLabel.innerText = 'Siswa';
-        document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
-        document.getElementById('nav-mycard').classList.remove('hidden');
-        switchTab('mycard');
-        renderStudentPersonalCard();
-      }
-
-      showToast('Peran berhasil diubah ke ' + label.innerText, 'info');
+      showToast('Role ditentukan oleh akun login dan tidak dapat diganti dari halaman ini.', 'info');
     }
 
     function setScanMode(mode) {
@@ -2154,7 +2160,9 @@
               timeOut: '-',
               status: row.status || 'Hadir',
               lateMinutes: 0,
-              mode: row.mode || 'RFID'
+              modeIn: '',
+              modeOut: '',
+              modeStatus: ''
             };
             grouped.set(key, log);
           }
@@ -2162,17 +2170,18 @@
           if (type === 'MASUK') {
             log.timeIn = row.time || log.timeIn;
             log.status = row.status || log.status;
-            const m = String(row.status || '').match(/(\d+)/);
-            log.lateMinutes = m ? Number(m[1]) : (log.lateMinutes || 0);
+            log.lateMinutes = Number(row.lateMinutes || 0);
+            log.modeIn = row.mode || log.modeIn || 'RFID';
           } else if (type === 'PULANG') {
             log.timeOut = row.time || log.timeOut;
+            log.modeOut = row.mode || log.modeOut || 'RFID';
           } else if (type === 'STATUS') {
             log.timeIn = '-';
             log.timeOut = '-';
             log.status = row.status || log.status;
             log.lateMinutes = 0;
+            log.modeStatus = row.mode || log.modeStatus || 'Input Manual';
           }
-          log.mode = row.mode || log.mode;
         });
 
         attendanceLogs = Array.from(grouped.values()).sort((a, b) => {
@@ -2535,7 +2544,16 @@ function formatAttendanceDate(value) {
 
   return text;
 }
-   function renderAttendanceLogTable() {
+   function formatAttendanceMode(log) {
+  const inMode = String(log.modeIn || '').trim();
+  const outMode = String(log.modeOut || '').trim();
+  const statusMode = String(log.modeStatus || '').trim();
+  if (statusMode) return statusMode;
+  if (inMode && outMode) return inMode === outMode ? inMode : `${inMode} + ${outMode}`;
+  return inMode || outMode || 'RFID';
+}
+
+function renderAttendanceLogTable() {
   const dateFilter = document.getElementById('logFilterDate')?.value || '';
   const classFilter = document.getElementById('logFilterClass')?.value || 'ALL';
   const statusFilter = document.getElementById('logFilterStatus')?.value || 'ALL';
@@ -2680,7 +2698,7 @@ function formatAttendanceDate(value) {
 
         <td class="py-3 px-4 text-slate-500 text-[11px] font-medium">
           <i class="fa-solid fa-tag mr-1 text-slate-400"></i>
-          ${log.mode || 'RFID'}
+          ${formatAttendanceMode(log)}
         </td>
 
       </tr>
