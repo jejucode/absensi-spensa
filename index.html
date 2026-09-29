@@ -23,6 +23,59 @@
   <!-- html2canvas for ID card PNG export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
+  <!-- ================= MODAL: USER ================= -->
+  <div id="userModal" class="fixed inset-0 z-[70] hidden bg-slate-950/60 backdrop-blur-sm p-4 flex items-center justify-center">
+    <div class="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+        <div>
+          <h3 id="userModalTitle" class="text-lg font-black text-slate-800">Tambah Pengguna</h3>
+          <p class="text-[11px] text-slate-500">Username, nama, role, password, dan status akun.</p>
+        </div>
+        <button onclick="closeUserModal()" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <form id="userForm" onsubmit="saveUserForm(event)" class="p-5 space-y-4">
+        <input type="hidden" id="editUserOriginalUsername">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Username</label>
+          <input id="userFormUsername" required maxlength="80" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-200">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Nama Pengguna</label>
+          <input id="userFormNama" required maxlength="200" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Role</label>
+            <select id="userFormRole" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold">
+              <option>Admin</option>
+              <option>Petugas Absen</option>
+              <option>Guru</option>
+              <option>Pimpinan</option>
+              <option>User</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Status</label>
+            <select id="userFormAktif" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold">
+              <option value="TRUE">Aktif</option>
+              <option value="FALSE">Nonaktif</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Password <span id="userPasswordHint" class="font-normal text-slate-400">(wajib untuk pengguna baru)</span></label>
+          <input id="userFormPassword" type="password" maxlength="200" autocomplete="new-password" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeUserModal()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl">Batal</button>
+          <button id="userSaveButton" type="submit" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow">
+            <i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Pengguna
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     tailwind.config = {
       theme: {
@@ -185,7 +238,7 @@
           <div>
             <div class="flex items-center space-x-2">
               <span class="font-black text-lg tracking-wider text-white">PORTAL SPENSA</span>
-              <span class="bg-blue-800/80 text-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-700">v4.2.0 LOGIN</span>
+              <span class="bg-blue-800/80 text-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-700">v4.4.0 LOGIN</span>
             </div>
             <p class="text-xs text-blue-200/80 font-medium">SMP Negeri 1 Padang Panjang</p>
           </div>
@@ -244,6 +297,10 @@
 
           <button onclick="switchTab('attendance')" id="nav-attendance" class="nav-btn px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-blue-200 hover:bg-blue-900/60 hover:text-white">
             <i class="fa-solid fa-clipboard-user"></i> <span>Rekap Absensi</span>
+          </button>
+
+          <button onclick="switchTab('users')" id="nav-users" class="nav-btn admin-only px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-blue-200 hover:bg-blue-900/60 hover:text-white">
+            <i class="fa-solid fa-user-gear"></i> <span>Manajemen Pengguna</span>
           </button>
 
           <button onclick="switchTab('settings')" id="nav-settings" class="nav-btn admin-only px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-blue-200 hover:bg-blue-900/60 hover:text-white">
@@ -860,7 +917,8 @@
             <option value="ALL">Semua Status</option>
             <option value="Hadir">Hadir</option>
             <option value="Terlambat">Terlambat</option>
-            <option value="Izin">Izin / Sakit</option>
+            <option value="Izin">Izin</option>
+            <option value="Sakit">Sakit</option>
             <option value="Alpa">Alpa</option>
           </select>
         </div>
@@ -895,7 +953,62 @@
 
     </section>
 
-    <!-- ================= TAB 6: INTEGRASI & SETTING ================= -->
+    <!-- ================= TAB 6: MANAJEMEN PENGGUNA ================= -->
+    <section id="tab-users" class="tab-content space-y-6 hidden">
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-black text-slate-800 flex items-center space-x-2">
+            <i class="fa-solid fa-user-gear text-blue-600"></i>
+            <span>Manajemen Pengguna</span>
+          </h2>
+          <p class="text-xs text-slate-500 mt-1">Kelola akun, role, password, dan status akses pengguna Portal Absensi Spensa.</p>
+        </div>
+        <button onclick="openUserModal()" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition">
+          <i class="fa-solid fa-user-plus mr-1"></i> Tambah Pengguna
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div class="relative flex-1 max-w-md">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input id="userSearchInput" oninput="renderUsersTable()" type="text" placeholder="Cari username, nama, atau role..." class="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-200">
+          </div>
+          <button onclick="loadUsersFromGoogleSheets()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-200">
+            <i class="fa-solid fa-rotate mr-1"></i> Muat Ulang
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[700px]">
+            <thead>
+              <tr class="bg-slate-50 text-slate-500 text-[11px] font-extrabold uppercase tracking-wider border-b border-slate-200">
+                <th class="py-3 px-4 text-left">Username</th>
+                <th class="py-3 px-4 text-left">Nama</th>
+                <th class="py-3 px-4 text-left">Role</th>
+                <th class="py-3 px-4 text-left">Status</th>
+                <th class="py-3 px-4 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody" class="divide-y divide-slate-100 text-xs">
+              <tr><td colspan="5" class="py-8 text-center text-slate-400">Belum memuat data pengguna.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-xs text-blue-800">
+          <div class="font-extrabold mb-1"><i class="fa-solid fa-shield-halved mr-1"></i> Keamanan</div>
+          Password tidak pernah ditampilkan pada tabel. Backend menyimpan password sebagai hash SHA-256.
+        </div>
+        <div class="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-xs text-amber-800">
+          <div class="font-extrabold mb-1"><i class="fa-solid fa-circle-info mr-1"></i> Hak akses</div>
+          Hanya Admin yang dapat menambah, mengubah, menonaktifkan, atau menghapus pengguna.
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 7: INTEGRASI & SETTING ================= -->
     <section id="tab-settings" class="tab-content space-y-6 hidden">
       
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
@@ -977,7 +1090,7 @@
     <section id="tab-mycard" class="tab-content space-y-6 hidden">
       <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
         <h2 class="text-2xl font-black text-slate-800">Kartu Presensi Digital Saya</h2>
-        <p class="text-xs text-slate-500 mt-1">Tunjukkan Kode QR atau Kartu ID ini ke Petugas Scanner Absensi Spensa</p>
+        <p class="text-xs text-slate-500 mt-1">Tunjukkan Kode QR atau Kartu ID ini ke Petugas Absen Absensi Spensa</p>
 
         <div id="studentPersonalCardArea" class="mt-6 flex justify-center">
           <!-- Rendered Card for logged student -->
@@ -1017,7 +1130,7 @@
             <i class="fa-solid fa-qrcode"></i>
           </div>
           <div>
-            <h4 class="font-extrabold text-slate-800 text-sm">Petugas Pemindai / Scanner</h4>
+            <h4 class="font-extrabold text-slate-800 text-sm">Petugas Absen</h4>
             <p class="text-xs text-slate-500">Mode Khusus Scan QR & RFID di Gerbang Sekolah</p>
           </div>
         </div>
@@ -1096,7 +1209,7 @@
       <div class="flex items-center justify-between pb-3 border-b border-slate-100">
         <h3 class="font-black text-slate-800 text-lg flex items-center space-x-2">
           <i class="fa-solid fa-code text-blue-600"></i>
-          <span>Kode Google Apps Script Spensa v4.2.0 LOGIN</span>
+          <span>Kode Google Apps Script Spensa v4.4.0 LOGIN</span>
         </h3>
         <button onclick="closeGASCodeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
       </div>
@@ -1111,6 +1224,59 @@
           <i class="fa-solid fa-copy mr-1"></i> Salin Kode
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: USER ================= -->
+  <div id="userModal" class="fixed inset-0 z-[70] hidden bg-slate-950/60 backdrop-blur-sm p-4 flex items-center justify-center">
+    <div class="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+        <div>
+          <h3 id="userModalTitle" class="text-lg font-black text-slate-800">Tambah Pengguna</h3>
+          <p class="text-[11px] text-slate-500">Username, nama, role, password, dan status akun.</p>
+        </div>
+        <button onclick="closeUserModal()" class="text-slate-400 hover:text-slate-700"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <form id="userForm" onsubmit="saveUserForm(event)" class="p-5 space-y-4">
+        <input type="hidden" id="editUserOriginalUsername">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Username</label>
+          <input id="userFormUsername" required maxlength="80" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-200">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Nama Pengguna</label>
+          <input id="userFormNama" required maxlength="200" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Role</label>
+            <select id="userFormRole" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold">
+              <option>Admin</option>
+              <option>Petugas Absen</option>
+              <option>Guru</option>
+              <option>Pimpinan</option>
+              <option>User</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Status</label>
+            <select id="userFormAktif" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold">
+              <option value="TRUE">Aktif</option>
+              <option value="FALSE">Nonaktif</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Password <span id="userPasswordHint" class="font-normal text-slate-400">(wajib untuk pengguna baru)</span></label>
+          <input id="userFormPassword" type="password" maxlength="200" autocomplete="new-password" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeUserModal()" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl">Batal</button>
+          <button id="userSaveButton" type="submit" class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow">
+            <i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Pengguna
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -1302,36 +1468,20 @@
 
     function applyAuthenticatedUser() {
       const role = String(authUser?.role || '').trim();
-      const roleMap = {
-        Admin: 'admin',
-        Petugas: 'scanner',
-        Guru: 'teacher',
-        Pimpinan: 'leader',
-        User: 'user'
-      };
+      const roleMap = { Admin:'admin', 'Petugas Absen':'operator', Guru:'teacher', Pimpinan:'leader', User:'user' };
       currentRole = roleMap[role] || 'user';
       const label = document.getElementById('roleLabel');
       const mobileLabel = document.getElementById('mobileRoleLabel');
       const displayName = authUser?.nama || authUser?.username || 'Pengguna';
       if (label) label.innerText = displayName + ' • ' + (role || 'Pengguna');
       if (mobileLabel) mobileLabel.innerText = role || 'User';
-      document.querySelectorAll('.admin-only').forEach(el => {
-        el.classList.toggle('hidden', role !== 'Admin');
-      });
-
-      // Role User adalah akun aplikasi biasa: dapat melihat dashboard,
-      // scanner, kartu, dan rekap; tidak dapat mengelola data/setting.
-      document.querySelectorAll('.user-only').forEach(el => {
-        el.classList.toggle('hidden', role !== 'User');
-      });
-      // Role switching dari UI lama tidak lagi menjadi sumber otorisasi.
-      const roleBadge = document.getElementById('roleBadgeContainer');
-      if (roleBadge) {
-        roleBadge.removeAttribute('onclick');
-        roleBadge.classList.remove('cursor-pointer');
-      }
-      const mobileRoleButton = document.querySelector('.flex.md\\:hidden button[onclick="openRoleModal()"]');
-      if (mobileRoleButton) mobileRoleButton.removeAttribute('onclick');
+      const access = {'Admin':['dashboard','scan','idcards','students','attendance','users','settings'],'Petugas Absen':['dashboard','scan','idcards','attendance'],'Guru':['dashboard','scan','idcards','attendance'],'Pimpinan':['dashboard','idcards','attendance'],'User':['dashboard','attendance','mycard']};
+      const allowedTabs = access[role] || access.User;
+      document.querySelectorAll('.nav-btn').forEach(btn => { const id=String(btn.id||'').replace(/^nav-/,''); btn.classList.toggle('hidden',!allowedTabs.includes(id)); });
+      document.querySelectorAll('.tab-content').forEach(section => { const id=String(section.id||'').replace(/^tab-/,''); if(!allowedTabs.includes(id)) section.classList.add('hidden'); });
+      document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', role !== 'Admin'));
+      if (!allowedTabs.includes(currentTab)) currentTab=allowedTabs[0]||'dashboard';
+      switchTab(currentTab);
     }
 
     function logoutSpensa() {
@@ -1434,6 +1584,173 @@
       if (input) input.value = currentUrl;
       localStorage.setItem('spensa_gas_url', currentUrl);
       return currentUrl;
+    }
+
+    // ============================================================
+    // MANAJEMEN PENGGUNA - ADMIN ONLY
+    // ============================================================
+    let usersData = [];
+    let userModalEditMode = false;
+
+    function jsonpRequest(action, params, callback, timeoutMs = 15000) {
+      const url = loadGASUrl();
+      const callbackName = 'spensaUserApi_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+      const script = document.createElement('script');
+      let finished = false;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      };
+
+      const finish = (result) => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        callback(result);
+      };
+
+      const timer = setTimeout(() => finish({ status: 'error', message: 'Permintaan ke server timeout.' }), timeoutMs);
+
+      window[callbackName] = finish;
+      const query = new URLSearchParams();
+      query.set('action', action);
+      if (getAuthToken()) query.set('token', getAuthToken());
+      Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) query.set(key, String(value));
+      });
+      query.set('callback', callbackName);
+      query.set('_ts', Date.now());
+
+      script.src = url + (url.includes('?') ? '&' : '?') + query.toString();
+      script.onerror = () => finish({ status: 'error', message: 'Koneksi ke Google Apps Script gagal.' });
+      document.head.appendChild(script);
+    }
+
+    function loadUsersFromGoogleSheets() {
+      if (String(authUser?.role || '') !== 'Admin') return;
+      const tbody = document.getElementById('usersTableBody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Memuat pengguna...</td></tr>';
+
+      jsonpRequest('getUsers', {}, function(response) {
+        if (response?.code === 'AUTH_REQUIRED' || response?.code === 'SESSION_EXPIRED') {
+          clearAuthSession();
+          showLoginScreen('Session berakhir. Silakan login kembali.');
+          return;
+        }
+        if (!response || response.status !== 'success' || !Array.isArray(response.data)) {
+          showToast(response?.message || 'Gagal memuat pengguna.', 'error');
+          return;
+        }
+        usersData = response.data.map(u => ({
+          username: String(u.username || '').trim(),
+          nama: String(u.nama || '').trim(),
+          role: String(u.role || 'User').trim(),
+          aktif: !!u.aktif
+        }));
+        renderUsersTable();
+      });
+    }
+
+    function renderUsersTable() {
+      const tbody = document.getElementById('usersTableBody');
+      if (!tbody) return;
+      const search = String(document.getElementById('userSearchInput')?.value || '').toLowerCase().trim();
+      const filtered = usersData.filter(u =>
+        [u.username, u.nama, u.role].some(v => String(v).toLowerCase().includes(search))
+      );
+
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-slate-400">Tidak ada pengguna yang cocok.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(u => {
+        const roleClass = u.role === 'Admin' ? 'bg-blue-100 text-blue-700' : (u.role === 'Pimpinan' ? 'bg-violet-100 text-violet-700' : (u.role === 'Guru' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'));
+        const statusClass = u.aktif ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700';
+        return `<tr class="hover:bg-slate-50">
+          <td class="py-3 px-4 font-bold text-slate-800">${escapeHtml(u.username)}</td>
+          <td class="py-3 px-4 text-slate-700">${escapeHtml(u.nama)}</td>
+          <td class="py-3 px-4"><span class="px-2 py-1 rounded-full text-[10px] font-extrabold ${roleClass}">${escapeHtml(u.role)}</span></td>
+          <td class="py-3 px-4"><span class="px-2 py-1 rounded-full text-[10px] font-extrabold ${statusClass}">${u.aktif ? 'Aktif' : 'Nonaktif'}</span></td>
+          <td class="py-3 px-4 text-right whitespace-nowrap">
+            <button onclick="editUser('${escapeJs(u.username)}')" class="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-bold mr-1" title="Edit"><i class="fa-solid fa-pen"></i></button>
+            <button onclick="deleteUserAccount('${escapeJs(u.username)}')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg font-bold" title="Hapus"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    }
+
+    function escapeJs(value) {
+      return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function openUserModal(username = '') {
+      if (String(authUser?.role || '') !== 'Admin') return;
+      userModalEditMode = !!username;
+      const user = usersData.find(u => u.username.toLowerCase() === String(username).toLowerCase());
+      document.getElementById('userModalTitle').textContent = user ? 'Edit Pengguna' : 'Tambah Pengguna';
+      document.getElementById('editUserOriginalUsername').value = user?.username || '';
+      document.getElementById('userFormUsername').value = user?.username || '';
+      document.getElementById('userFormNama').value = user?.nama || '';
+      document.getElementById('userFormRole').value = user?.role || 'User';
+      document.getElementById('userFormAktif').value = user?.aktif ? 'TRUE' : 'FALSE';
+      document.getElementById('userFormPassword').value = '';
+      document.getElementById('userPasswordHint').textContent = user ? '(kosongkan jika password tidak diubah)' : '(wajib untuk pengguna baru)';
+      document.getElementById('userModal').classList.remove('hidden');
+    }
+
+    function editUser(username) { openUserModal(username); }
+
+    function closeUserModal() {
+      document.getElementById('userModal')?.classList.add('hidden');
+    }
+
+    function saveUserForm(event) {
+      event.preventDefault();
+      if (String(authUser?.role || '') !== 'Admin') return;
+      const username = document.getElementById('userFormUsername').value.trim();
+      const nama = document.getElementById('userFormNama').value.trim();
+      const password = document.getElementById('userFormPassword').value;
+      const role = document.getElementById('userFormRole').value;
+      const aktif = document.getElementById('userFormAktif').value;
+      const original = document.getElementById('editUserOriginalUsername').value.trim();
+      if (!username || !nama) { showToast('Username dan nama wajib diisi.', 'error'); return; }
+      if (!original && !password) { showToast('Password wajib diisi untuk pengguna baru.', 'error'); return; }
+
+      const button = document.getElementById('userSaveButton');
+      button.disabled = true;
+      button.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Menyimpan...';
+
+      jsonpRequest('saveUser', { username, nama, password, role, aktif }, function(response) {
+        button.disabled = false;
+        button.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Pengguna';
+        if (!response || response.status !== 'success') {
+          showToast(response?.message || 'Gagal menyimpan pengguna.', 'error');
+          return;
+        }
+        closeUserModal();
+        showToast(response.message || 'Pengguna berhasil disimpan.', 'success');
+        loadUsersFromGoogleSheets();
+      });
+    }
+
+    function deleteUserAccount(username) {
+      if (String(authUser?.role || '') !== 'Admin') return;
+      if (!confirm('Hapus pengguna "' + username + '"? Tindakan ini tidak dapat dibatalkan.')) return;
+      jsonpRequest('deleteUser', { username }, function(response) {
+        if (!response || response.status !== 'success') {
+          showToast(response?.message || 'Gagal menghapus pengguna.', 'error');
+          return;
+        }
+        showToast(response.message || 'Pengguna berhasil dihapus.', 'success');
+        loadUsersFromGoogleSheets();
+      });
     }
 
     function loadStudentsFromGoogleSheets() {
@@ -1558,6 +1875,16 @@
     }
 
     function switchTab(tabId) {
+      const role = String(authUser?.role || '').trim();
+      const access = {
+        'Admin': ['dashboard','scan','idcards','students','attendance','users','settings'],
+        'Petugas Absen': ['dashboard','scan','idcards','attendance'],
+        'Guru': ['dashboard','scan','idcards','attendance'],
+        'Pimpinan': ['dashboard','idcards','attendance'],
+        'User': ['dashboard','attendance','mycard']
+      };
+      const allowedTabs = access[role] || ['dashboard'];
+      if (!allowedTabs.includes(tabId)) { showToast('Menu ini tidak tersedia untuk role ' + (role || 'User') + '.', 'error'); return; }
       currentTab = tabId;
 
       // Toggle tab contents
@@ -1579,6 +1906,7 @@
 
       // Special action on tab switch
       if (tabId === 'dashboard') renderDashboard();
+      if (tabId === 'users') loadUsersFromGoogleSheets();
       if (tabId === 'idcards') renderIDCardPreview();
       if (tabId !== 'scan' && webcamScanning) stopWebcamScanner();
     }
@@ -1592,33 +1920,8 @@
     }
 
     function selectRole(role) {
-      currentRole = role;
       closeRoleModal();
-
-      const label = document.getElementById('roleLabel');
-      const mobileLabel = document.getElementById('mobileRoleLabel');
-
-      if (role === 'admin') {
-        label.innerText = 'Admin Spensa';
-        mobileLabel.innerText = 'Admin';
-        document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-        document.getElementById('nav-mycard').classList.add('hidden');
-      } else if (role === 'scanner') {
-        label.innerText = 'Petugas Scanner';
-        mobileLabel.innerText = 'Scanner';
-        document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
-        document.getElementById('nav-mycard').classList.add('hidden');
-        switchTab('scan');
-      } else {
-        label.innerText = 'User Siswa';
-        mobileLabel.innerText = 'Siswa';
-        document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
-        document.getElementById('nav-mycard').classList.remove('hidden');
-        switchTab('mycard');
-        renderStudentPersonalCard();
-      }
-
-      showToast('Peran berhasil diubah ke ' + label.innerText, 'info');
+      showToast('Role ditentukan oleh akun login dan tidak dapat diganti dari halaman ini.', 'info');
     }
 
     function setScanMode(mode) {
@@ -2187,7 +2490,7 @@
               timeOut: '-',
               status: row.status || 'Hadir',
               lateMinutes: 0,
-              mode: row.mode || 'RFID'
+              mode: '', modeIn: '', modeOut: '', modeStatus: ''
             };
             grouped.set(key, log);
           }
@@ -2196,11 +2499,13 @@
             log.timeIn = row.time || log.timeIn;
             log.status = row.status || log.status;
             log.attendanceType = 'MASUK';
+            log.modeIn = row.mode || log.modeIn || 'RFID';
             const m = String(row.status || '').match(/(\d+)/);
             log.lateMinutes = m ? Number(m[1]) : (log.lateMinutes || 0);
           } else if (type === 'PULANG') {
             log.timeOut = row.time || log.timeOut;
             log.attendanceType = log.attendanceType || 'PULANG';
+            log.modeOut = row.mode || log.modeOut || 'RFID';
           } else if (type === 'STATUS') {
             // Status Izin/Sakit/Alpa hanya menjadi status harian jika
             // peserta belum memiliki transaksi Jam Masuk.
@@ -2575,7 +2880,18 @@ function formatAttendanceDate(value) {
 
   return text;
 }
-   function renderAttendanceLogTable() {
+   function formatAttendanceMode(log) {
+      const inMode = String(log.modeIn || '').trim();
+      const outMode = String(log.modeOut || '').trim();
+      const statusMode = String(log.modeStatus || '').trim();
+      if (inMode && outMode && inMode !== outMode) return inMode + ' + ' + outMode;
+      if (inMode) return inMode;
+      if (outMode) return outMode;
+      if (statusMode) return statusMode;
+      return String(log.mode || 'RFID').trim() || 'RFID';
+    }
+
+    function renderAttendanceLogTable() {
   const dateFilter = document.getElementById('logFilterDate')?.value || '';
   const classFilter = document.getElementById('logFilterClass')?.value || 'ALL';
   const statusFilter = document.getElementById('logFilterStatus')?.value || 'ALL';
@@ -2722,7 +3038,7 @@ function formatAttendanceDate(value) {
 
         <td class="py-3 px-4 text-slate-500 text-[11px] font-medium">
           <i class="fa-solid fa-tag mr-1 text-slate-400"></i>
-          ${log.mode || 'RFID'}
+          ${formatAttendanceMode(log)}
         </td>
 
       </tr>
@@ -2734,7 +3050,7 @@ function formatAttendanceDate(value) {
       let csv = 'Tanggal,Nama,NISN,Kelas,Jam Masuk,Jam Pulang,Status,Keterlambatan(Menit),Metode\n';
       attendanceLogs.forEach(log => {
         const s = studentData.find(st => st.id === log.studentId) || {};
-        csv += `"${log.date}","${s.name || ''}","${s.nis || ''}","${s.class || ''}","${log.timeIn}","${log.timeOut}","${log.status}","${log.lateMinutes}","${log.mode}"\n`;
+        csv += `"${log.date}","${s.name || ''}","${s.nis || ''}","${s.class || ''}","${log.timeIn}","${log.timeOut}","${log.status}","${log.lateMinutes}","${formatAttendanceMode(log)}"\n`;
       });
 
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -2755,15 +3071,9 @@ function formatAttendanceDate(value) {
       document.getElementById('dashHadirCount').innerText = todayLogs.filter(l => l.status === 'Hadir').length;
       document.getElementById('dashTerlambatCount').innerText = todayLogs.filter(l => l.status === 'Terlambat').length;
       document.getElementById('dashIzinSakitCount').innerText = todayLogs.filter(l => l.status === 'Izin' || l.status === 'Sakit').length;
-      const eligibleStudents = studentData.filter(s => String(s.role || 'Siswa').toLowerCase() === 'siswa');
-      const attendedStudentIds = new Set(
-        todayLogs
-          .filter(l => ['Hadir', 'Terlambat'].includes(String(l.status || '')))
-          .map(l => String(l.studentId || l.nis || '').trim())
-          .filter(Boolean)
-      );
-      document.getElementById('dashAlpaCount').innerText =
-        Math.max(0, eligibleStudents.length - attendedStudentIds.size);
+      const eligibleParticipants = studentData.filter(s => String(s.nis || s.id || '').trim());
+      const attendedParticipantIds = new Set(todayLogs.filter(l => ['Hadir','Terlambat','Izin','Sakit','Alpa'].includes(String(l.status || ''))).map(l => String(l.studentId || l.nis || '').trim()).filter(Boolean));
+      document.getElementById('dashAlpaCount').innerText = Math.max(0, eligibleParticipants.length - attendedParticipantIds.size);
 
       // Live Feed Dashboard
       const feedContainer = document.getElementById('dashboardLiveFeed');
@@ -3213,9 +3523,9 @@ function handleScanAttendance_(p) {
     }, p.callback);
   }
 
-  // Hanya Admin/Petugas/Pimpinan/Guru yang dapat melakukan scan.
+  // Hanya Admin/Petugas Absen/Pimpinan/Guru yang dapat melakukan scan.
   // Viewer tidak digunakan untuk transaksi.
-  if (['Admin', 'Petugas', 'Pimpinan', 'Guru'].indexOf(session.role) === -1) {
+  if (['Admin', 'Petugas Absen', 'Guru'].indexOf(session.role) === -1) {
     return output_({
       status: 'error',
       message: 'Akun Anda tidak memiliki hak untuk melakukan presensi.'
@@ -3571,7 +3881,7 @@ function findParticipant_(value) {
 function roleFromJenis_(value) {
   const v = String(value || '').trim().toLowerCase();
   if (v.indexOf('admin') >= 0) return 'Admin';
-  if (v.indexOf('petugas') >= 0 || v.indexOf('scanner') >= 0) return 'Petugas';
+  if (v.indexOf('petugas absen') >= 0 || v === 'scanner' || v.indexOf('scanner') >= 0) return 'Petugas Absen';
   if (v.indexOf('pimpinan') >= 0 || v.indexOf('kepala') >= 0) return 'Pimpinan';
   if (v.indexOf('guru') >= 0 || v.indexOf('staf') >= 0) return 'Guru';
   return 'Siswa';
@@ -3580,10 +3890,11 @@ function roleFromJenis_(value) {
 function normalizeRole_(value) {
   const v = String(value || '').trim().toLowerCase();
   if (v === 'admin') return 'Admin';
-  if (v === 'petugas' || v === 'scanner') return 'Petugas';
+  if (v === 'petugas absen' || v === 'petugas' || v === 'scanner') return 'Petugas Absen';
   if (v === 'guru') return 'Guru';
   if (v === 'pimpinan' || v === 'leader' || v === 'kepala sekolah') return 'Pimpinan';
-  return 'Viewer';
+  if (v === 'user' || v === 'pengguna' || v === 'viewer') return 'User';
+  return 'User';
 }
 
 function normalizeRFID_(value) {
