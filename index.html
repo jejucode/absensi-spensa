@@ -238,7 +238,7 @@
           <div>
             <div class="flex items-center space-x-2">
               <span class="font-black text-lg tracking-wider text-white">PORTAL SPENSA</span>
-              <span class="bg-blue-800/80 text-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-700">v4.4.0 LOGIN</span>
+              <span class="bg-blue-800/80 text-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-blue-700">v4.4.0 ABSEN MENU</span>
             </div>
             <p class="text-xs text-blue-200/80 font-medium">SMP Negeri 1 Padang Panjang</p>
           </div>
@@ -285,6 +285,18 @@
 
           <button onclick="switchTab('scan')" id="nav-scan" class="nav-btn px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-blue-200 hover:bg-blue-900/60 hover:text-white">
             <i class="fa-solid fa-qrcode"></i> <span>Scan Absensi</span>
+          </button>
+
+          <button onclick="openAttendanceMenu('MASUK')" id="nav-absen-masuk" class="nav-btn attendance-action-nav px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-emerald-200 hover:bg-emerald-900/60 hover:text-white">
+            <i class="fa-solid fa-right-to-bracket"></i> <span>Absen Masuk</span>
+          </button>
+
+          <button onclick="openAttendanceMenu('PULANG')" id="nav-absen-pulang" class="nav-btn attendance-action-nav px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-amber-200 hover:bg-amber-900/60 hover:text-white">
+            <i class="fa-solid fa-right-from-bracket"></i> <span>Absen Pulang</span>
+          </button>
+
+          <button onclick="openAttendanceMenu('SHALAT_ZUHUR')" id="nav-absen-zuhur" class="nav-btn attendance-action-nav px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-cyan-200 hover:bg-cyan-900/60 hover:text-white">
+            <i class="fa-solid fa-mosque"></i> <span>Shalat Zuhur</span>
           </button>
 
           <button onclick="switchTab('idcards')" id="nav-idcards" class="nav-btn px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-blue-200 hover:bg-blue-900/60 hover:text-white">
@@ -1875,6 +1887,7 @@
     }
 
     function switchTab(tabId) {
+      if (tabId === 'scan') setTimeout(updateAttendanceModeUI, 0);
       const role = String(authUser?.role || '').trim();
       const access = {
         'Admin': ['dashboard','scan','idcards','students','attendance','users','settings'],
@@ -2228,7 +2241,46 @@
       if (box && wrapper && !wrapper.contains(e.target)) box.classList.add('hidden');
     });
 
-    function processScannedCode(scannedValue, modeText, statusOverride = 'AUTO') {
+    // ============================================================
+    // MODE PRESENSI TERPILIH
+    // MASUK | PULANG | SHALAT_ZUHUR
+    // ============================================================
+    let selectedAttendanceType = 'AUTO';
+
+    function attendanceTypeLabel(type) {
+      const labels = { MASUK:'ABSEN MASUK', PULANG:'ABSEN PULANG', SHALAT_ZUHUR:'ABSEN SHALAT ZUHUR', AUTO:'SCAN ABSENSI' };
+      return labels[type] || labels.AUTO;
+    }
+
+    function openAttendanceMenu(type) {
+      const role = String(authUser?.role || '').trim();
+      if (!['Admin','Petugas Absen','Guru'].includes(role)) {
+        showToast('Akun Anda tidak memiliki hak untuk melakukan presensi.', 'error');
+        return;
+      }
+      selectedAttendanceType = type;
+      switchTab('scan');
+      setScanMode('rfid');
+      updateAttendanceModeUI();
+      document.getElementById('rfidBufferInput')?.focus();
+      showToast(attendanceTypeLabel(type) + ' aktif. Silakan scan kartu RFID.', 'info');
+    }
+
+    function updateAttendanceModeUI() {
+      const title = document.querySelector('#tab-scan h2 span');
+      const description = document.querySelector('#tab-scan > div:first-child p');
+      if (title) title.textContent = attendanceTypeLabel(selectedAttendanceType);
+      if (description) description.textContent = selectedAttendanceType === 'SHALAT_ZUHUR'
+        ? 'Mode khusus Shalat Zuhur • Satu peserta hanya dapat tercatat satu kali per hari.'
+        : selectedAttendanceType === 'MASUK'
+          ? 'Mode Absen Masuk • Scan RFID/QR akan dicatat sebagai Jam Masuk.'
+          : selectedAttendanceType === 'PULANG'
+            ? 'Mode Absen Pulang • Scan RFID/QR akan dicatat sebagai Jam Pulang setelah Jam Masuk.'
+            : 'Mendukung Scan QR Code Webcam Real-Time & Mode Tap RFID (USB HID / Keypad Listener)';
+    }
+
+    function processScannedCode(scannedValue, modeText, statusOverride = null) {
+      statusOverride = statusOverride || selectedAttendanceType || 'AUTO';
       // Normalisasi kode scanner. Jangan pernah meneruskan payload besar ke server.
       let value = String(scannedValue || '').trim();
       if (modeText === 'RFID Tap') {
@@ -2316,6 +2368,7 @@
         const a = response.attendance;
         const attendanceType = String(a.type || a.tipe || '').toUpperCase();
         const isCheckOut = attendanceType === 'PULANG';
+        const isZuhur = attendanceType === 'SHALAT_ZUHUR';
         const isStatus = attendanceType === 'STATUS';
         const status = a.status || 'Hadir';
         const lateMinutes = Number(a.lateMinutes || 0);
@@ -2327,6 +2380,8 @@
         let msg = '';
         if (isStatus) {
           msg = `Status ${status} tersimpan (${a.time || '-'} WIB)`;
+        } else if (isZuhur) {
+          msg = `Absen Shalat Zuhur Berhasil (${a.time || '-'} WIB)`;
         } else if (isCheckOut) {
           msg = `Presensi Pulang Berhasil (${a.time || '-'} WIB)`;
         } else if (status === 'Terlambat') {
@@ -2336,7 +2391,12 @@
         }
 
         showScanResult(student, true, msg, modeText, status, isCheckOut);
-        showToast(isStatus ? `Status ${status} tersimpan di Google Sheet.` : (isCheckOut ? 'Presensi pulang tersimpan di Google Sheet.' : 'Presensi masuk tersimpan di Google Sheet.'), 'success');
+        showToast(
+          isStatus ? `Status ${status} tersimpan di Google Sheet.` :
+          isZuhur ? 'Absen Shalat Zuhur tersimpan di Google Sheet.' :
+          (isCheckOut ? 'Presensi pulang tersimpan di Google Sheet.' : 'Presensi masuk tersimpan di Google Sheet.'),
+          'success'
+        );
 
         // Sinkronisasi penuh dari server. Google Sheet adalah sumber utama;
         // localStorage hanya cache tampilan dan tidak boleh menimpa server.
@@ -2605,7 +2665,7 @@
         document.getElementById('scanResName').innerText = student.name;
         document.getElementById('scanResClass').innerText = `Kelas ${student.class} • NISN: ${student.nis}`;
         document.getElementById('scanResRFID').innerText = `RFID: ${student.rfid}`;
-        document.getElementById('scanResType').innerText = isCheckOut ? 'JAM PULANG' : 'JAM MASUK';
+        document.getElementById('scanResType').innerText = selectedAttendanceType === 'SHALAT_ZUHUR' ? 'SHALAT ZUHUR' : (isCheckOut ? 'JAM PULANG' : 'JAM MASUK');
         document.getElementById('scanResTime').innerText = new Date().toLocaleTimeString('id-ID') + ' WIB (' + modeText + ')';
       }
 
