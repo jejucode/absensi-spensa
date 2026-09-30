@@ -283,7 +283,7 @@
             <i class="fa-solid fa-chart-pie"></i> <span>Dashboard</span>
           </button>
 
-          <button onclick="switchTab('scan')" id="nav-scan" class="nav-btn px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-blue-200 hover:bg-blue-900/60 hover:text-white">
+          <button onclick="openAttendanceMenu('AUTO')" id="nav-scan" class="nav-btn px-3 py-2 rounded-lg font-semibold transition flex items-center space-x-2 text-blue-200 hover:bg-blue-900/60 hover:text-white">
             <i class="fa-solid fa-qrcode"></i> <span>Scan Absensi</span>
           </button>
 
@@ -1489,7 +1489,13 @@
       if (mobileLabel) mobileLabel.innerText = role || 'User';
       const access = {'Admin':['dashboard','scan','idcards','students','attendance','users','settings'],'Petugas Absen':['dashboard','scan','idcards','attendance'],'Guru':['dashboard','scan','idcards','attendance'],'Pimpinan':['dashboard','idcards','attendance'],'User':['dashboard','attendance','mycard']};
       const allowedTabs = access[role] || access.User;
-      document.querySelectorAll('.nav-btn').forEach(btn => { const id=String(btn.id||'').replace(/^nav-/,''); btn.classList.toggle('hidden',!allowedTabs.includes(id)); });
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        if (btn.classList.contains('attendance-action-nav')) return;
+        const id=String(btn.id||'').replace(/^nav-/,'');
+        btn.classList.toggle('hidden',!allowedTabs.includes(id));
+      });
+      const canScan = ['Admin','Petugas Absen','Guru'].includes(role);
+      document.querySelectorAll('.attendance-action-nav').forEach(btn => btn.classList.toggle('hidden', !canScan));
       document.querySelectorAll('.tab-content').forEach(section => { const id=String(section.id||'').replace(/^tab-/,''); if(!allowedTabs.includes(id)) section.classList.add('hidden'); });
       document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', role !== 'Admin'));
       if (!allowedTabs.includes(currentTab)) currentTab=allowedTabs[0]||'dashboard';
